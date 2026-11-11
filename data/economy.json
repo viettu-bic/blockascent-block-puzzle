@@ -1,0 +1,42 @@
+{
+  "_": "Meta economy. Starting values, not tuned values — see docs/04-economy.md for the invariants these must satisfy and how to verify them with the simulation.",
+
+  "_anchor": "A floor-level GREEDY SIM (no meta, no powers) clears 5 stages for 1,118 points in ~124 placements. That sim is NOT the floor: it evaluates every rotation in every position, and a first-time human clears 2 stages. Every number here used to be priced against the sim, which is why a real first run returned 35 spools against a 100-spool first unlock. See docs/04 §7.",
+
+  "_rule1": "Payout keys off STAGES, never score. Score inflates when the player buys value upgrades; stages do not, because the target curve defines them. Keying payout to score creates a buy-more-earn-more spiral that destroys the curve (docs/04 §1).",
+
+  "payout": {
+    "_formula": "spools = sum over s in 1..stagesReached of (base + perStage * s)",
+    "base": 10,
+    "perStage": 5,
+    "_payForStageReached": "A run is paid for every stage it REACHED, not only the stages it cleared. The stage you fought and lost is a stage you played. This keeps rule 1 intact — a stage reached is still a stage, not a score — while removing the cliff where a run that died on stage 1 paid literally nothing.",
+    "payForStageReached": true,
+    "_examples": "died on stage 1 = 15 · cleared 2 = 60 · cleared 5 = 165 · cleared 8 = 315 · won = 510",
+    "firstRunOfDayBonus": 100
+  },
+
+  "shapeCosts": {
+    "_": "Tier 1 is free at install. 17 shapes to unlock, 14,020 spools total.",
+    "_onramp": "The first tier-2 motif costs 40, not 100. The first unlock is the single most important number in the economy: it is the first time the game proves that losing pays, and it has to land on run 1 for a HUMAN, not for the sim. The rest of tier 2 absorbs the discount, so the tier total barely moves.",
+    "tier2": [40, 110, 170, 250, 330, 420],
+    "tier3": [500, 620, 760, 920, 1100, 1300],
+    "tier4": [1100, 1300, 1500, 1700, 1900]
+  },
+
+  "upgrades": {
+    "_": "8,700 spools total. Both tracks open from run 1 — unlike the original, upgrades are NOT gated behind unlocking every shape.",
+    "classicMode": 400,
+    "dailyChallenge": 0,
+    "loadoutSlot9": 1800,
+    "openingRhythm": { "cost": 700, "effect": "start each run at x1.2 instead of x1.0" },
+    "openingAllowance": { "cost": 900, "effect": "+2 placements on stage 1" },
+    "startingSelvage": { "cost": 1300, "effect": "begin each run holding one shield" },
+    "fineYarn": { "cost": 600, "effect": "+1 value to 1- and 2-cell motifs" },
+    "standardYarn": { "cost": 1600, "effect": "+1 value to 3- and 4-cell motifs" },
+    "heavyYarn": { "cost": 1400, "effect": "+1 value to 5-cell and larger motifs" }
+  },
+
+  "_notIncluded": "A 4th tray slot is deliberately NOT a permanent upgrade. It is the single largest power swing in the game and it alters the refill-on-empty rule the whole difficulty rests on. It belongs in the in-run draft, where it costs a pick.",
+
+  "_invariant": "Full meta must be worth about +4 stages of median depth and no more, and most of that must come from BREADTH — motifs owned, loadout slots — not from flat stat increases (docs/06 §3 amends the +2 first written here). Zero-meta median is stage 6; full-meta median should land near stage 10-11 against a 12-stage ladder. If the simulation says 12 reliably, cut power before cutting cost."
+}

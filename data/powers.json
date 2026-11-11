@@ -1,0 +1,57 @@
+{
+  "_": "Draft cards. One pick per stage cleared, 3 offered. See docs/05-powers.md for the calibration method. `gain` is an ESTIMATED percentage of per-stage capability against the measured floor baseline (~158 pts/stage); these are the numbers the simulation must confirm, not numbers it has confirmed.",
+
+  "_calibration": "Targets grow 25% per stage and the player gets exactly one pick per stage, so the average pick must be worth slightly LESS than 25% or the ladder becomes infinite. Target: commons 8-15%, uncommons 15-25%, rares 25-35%.",
+
+  "offer": {
+    "count": 3,
+    "_weights": "Rarity weights by stage cleared, as common/uncommon/rare.",
+    "weights": [
+      { "upToStage": 3, "common": 80, "uncommon": 20, "rare": 0 },
+      { "upToStage": 6, "common": 55, "uncommon": 35, "rare": 10 },
+      { "upToStage": 99, "common": 35, "uncommon": 45, "rare": 20 }
+    ],
+    "noDuplicateUnlessStackable": true
+  },
+
+  "powers": [
+    { "id": "fine_yarn", "family": "yarn", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 6, "effect": "+2 points per block on 1- and 2-block pieces" },
+    { "id": "standard_yarn", "family": "yarn", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 18, "effect": "+1 point per block on 3- and 4-block pieces" },
+    { "id": "slub_yarn", "family": "yarn", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 8, "effect": "+3 points per block on one block you choose" },
+    { "id": "heavy_yarn", "family": "yarn", "rarity": "uncommon", "unlock": "own 4 tier-3 motifs", "stacks": 3, "gain": 12, "effect": "+1 point per block on 5-block pieces and larger" },
+    { "id": "doubleweave", "family": "yarn", "rarity": "uncommon", "unlock": "clear stage 6", "stacks": 2, "gain": 15, "effect": "pieces touching the board edge score +3" },
+    { "id": "gilt_thread", "family": "yarn", "rarity": "rare", "unlock": "clear stage 9", "stacks": 1, "gain": 30, "effect": "+2 points per block on every piece, but -2 moves a level" },
+
+    { "id": "quick_shuttle", "family": "rhythm", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 9, "effect": "combo grows 0.25 per clear instead of 0.20" },
+    { "id": "weftwise", "family": "rhythm", "rarity": "common", "unlock": "initial", "stacks": 2, "gain": 13, "effect": "clearing a row grows the combo an extra 0.2" },
+    { "id": "warpwise", "family": "rhythm", "rarity": "uncommon", "unlock": "clear stage 5", "stacks": 2, "gain": 15, "effect": "clearing a column grows the combo an extra 0.2" },
+    { "id": "steady_beat", "family": "rhythm", "rarity": "uncommon", "unlock": "reach rhythm x3.0", "stacks": 2, "gain": 10, "effect": "combo cap 4.0 to 5.0" },
+    { "id": "double_pick", "family": "rhythm", "rarity": "rare", "unlock": "clear 3 lines at once", "stacks": 1, "gain": 26, "effect": "clearing 2+ lines at once grows the combo twice as much" },
+    { "id": "treadle_rhythm", "family": "rhythm", "rarity": "rare", "unlock": "clear stage 8", "stacks": 1, "gain": 22, "effect": "the combo never drops below 1.5" },
+
+    { "id": "selvage", "family": "selvage", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 14, "effect": "gain 1 shield, refilled at the start of each level" },
+    { "id": "temple", "family": "selvage", "rarity": "common", "unlock": "initial", "stacks": 1, "gain": 10, "effect": "the first miss each level does not cost patience" },
+    { "id": "patience", "family": "selvage", "rarity": "uncommon", "unlock": "lose a run to a broken rhythm", "stacks": 2, "gain": 24, "effect": "+1 patience" },
+    { "id": "floating_selvage", "family": "selvage", "rarity": "uncommon", "unlock": "clear stage 6", "stacks": 1, "gain": 18, "effect": "when the combo breaks it drops to 2.0, not 1.0" },
+    { "id": "mending", "family": "selvage", "rarity": "uncommon", "unlock": "clear stage 10", "stacks": 1, "gain": 15, "effect": "clearing 3+ lines at once restores a used shield" },
+
+    { "id": "unpick", "family": "tools", "rarity": "common", "unlock": "initial", "stacks": 2, "gain": 12, "effect": "erase 1 block from the board. 2 uses a level" },
+    { "id": "rethread", "family": "tools", "rarity": "common", "unlock": "initial", "stacks": 2, "gain": 12, "effect": "reshuffle the tray. 2 uses a level" },
+    { "id": "shears", "family": "tools", "rarity": "uncommon", "unlock": "jam a run", "stacks": 2, "gain": 17, "effect": "blow up a 2x2 area. 1 use a level" },
+    { "id": "hold", "family": "tools", "rarity": "uncommon", "unlock": "clear stage 5", "stacks": 1, "gain": 20, "effect": "set one piece aside for as long as you like" },
+    { "id": "batten", "family": "tools", "rarity": "rare", "unlock": "clear stage 8", "stacks": 1, "gain": 20, "effect": "clear any row or column you pick. 1 use a run" },
+    { "id": "second_shuttle", "family": "tools", "rarity": "rare", "unlock": "clear stage 7", "stacks": 1, "gain": 30, "effect": "a 4th tray slot" },
+
+    { "id": "cull", "family": "draft", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 15, "effect": "permanently remove one block from this run" },
+    { "id": "favour", "family": "draft", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 10, "effect": "add a second copy of one block to this run" },
+    { "id": "small_hands", "family": "draft", "rarity": "uncommon", "unlock": "clear stage 4", "stacks": 1, "gain": 18, "effect": "every refill includes at least one 3-block piece or smaller" },
+    { "id": "jacquard_card", "family": "draft", "rarity": "uncommon", "unlock": "own 8 motifs", "stacks": 1, "gain": 14, "effect": "see the next refill before you spend the current tray" },
+    { "id": "resley", "family": "draft", "rarity": "uncommon", "unlock": "clear stage 7", "stacks": 1, "gain": 16, "effect": "once a level, replace the whole tray" },
+
+    { "id": "overtime", "family": "commission", "rarity": "common", "unlock": "initial", "stacks": 3, "gain": 15, "effect": "+3 moves a level" },
+    { "id": "piecework", "family": "commission", "rarity": "common", "unlock": "finish 5 runs", "stacks": 3, "gain": 0, "effect": "+25 coins for every level cleared" },
+    { "id": "apprentice", "family": "commission", "rarity": "uncommon", "unlock": "clear stage 6", "stacks": 1, "gain": 12, "effect": "every upgrade pick offers 4 options instead of 3" },
+    { "id": "short_bolt", "family": "commission", "rarity": "rare", "unlock": "clear stage 9", "stacks": 1, "gain": 25, "effect": "all remaining level targets -20%" },
+    { "id": "bulk_order", "family": "commission", "rarity": "rare", "gamble": true, "unlock": "bank 5000 spools", "stacks": 1, "gain": -13, "effect": "+60% coins this run, but all remaining targets +15%" }
+  ]
+}

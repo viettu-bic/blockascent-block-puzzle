@@ -1,0 +1,58 @@
+{
+  "_": "Fault stages — this design's bosses. Three per act, offered as a choice of 3 at the act's start. See docs/06-stages-and-bosses.md. Every name is a real weaving defect.",
+
+  "_placement": "Faults sit at stages 4, 8 and 12 — the last stage of each act. The act's three options are announced when the act begins, so the player can draft toward the one they chose.",
+
+  "knot": {
+    "_": "Shared mechanic used by slubs, the_smash and floats. Defined once so the three faults behave identically.",
+    "rule": "A knot is a filled cell that COUNTS toward completing a row or column, but is NOT removed when that line clears.",
+    "_why": "If knots blocked lines from clearing, a single knot would kill a row and a column outright and the fault would be a coin flip. Counting-but-persisting makes a knot a creeping tax on board space instead — obstructive, survivable, and it still rewards clearing around it.",
+    "allKnotGuard": "A line containing no ordinary filled cell does NOT clear and does NOT score.",
+    "_guardWhy": "Without this, a row that has become entirely knots is permanently 'full', so it re-clears on every placement and pays the line bonus forever. Floats and The Smash can both reach that state in a long stage.",
+    "removableBy": ["unpick", "shears"]
+  },
+
+  "rewardTiers": {
+    "1": "normal draft",
+    "2": "draft offers uncommon or better only",
+    "3": "draft offers rares only, or take an extra pick"
+  },
+
+  "acts": [
+    {
+      "act": 1,
+      "stage": 4,
+      "name": "Act 1 challenges",
+      "_": "Mild and legible. Their job is to teach what a fault IS, against a target of only 1.2x floor capability.",
+      "faults": [
+        { "id": "thin_place", "name": "Tight Budget", "tier": 1, "rule": "moves x0.7, target x0.75", "attacks": "slow, high-scoring builds" },
+        { "id": "reediness", "name": "Columns Only", "tier": 2, "rule": "only columns clear this level; full rows do nothing", "attacks": "row-focused builds and the Row Bonus upgrade" },
+        { "id": "mispick", "name": "Short Fuse", "tier": 3, "rule": "patience reduced to 1", "attacks": "fast builds that rely on setup moves" }
+      ]
+    },
+    {
+      "act": 2,
+      "stage": 8,
+      "name": "Act 2 challenges",
+      "_": "Real tests against 3.0x floor capability. Each invalidates one archetype's main plan.",
+      "faults": [
+        { "id": "fixed_heddles", "name": "No Rotation", "tier": 1, "rule": "rotation is disabled for this level", "attacks": "builds around big pieces" },
+        { "id": "barre", "name": "Big Pieces Only", "tier": 2, "rule": "you are only dealt pieces of 4 blocks or more", "attacks": "small-piece builds and the Small Block Guarantee" },
+        { "id": "slubs", "name": "Blockers", "tier": 3, "rule": "six blockers are scattered on the board at the start", "attacks": "builds that control which blocks they get" }
+      ]
+    },
+    {
+      "act": 3,
+      "stage": 12,
+      "name": "Act 3 challenges",
+      "_": "The finale, against 7.4x floor capability. Each should be survivable by at least three archetypes and trivial for none.",
+      "faults": [
+        { "id": "tight_reed", "name": "Narrow Board", "tier": 1, "rule": "the board is 7x7 for this level; lines are 7 blocks long", "_impl": "Genuinely resize the board rather than knotting the outer ring — a ring of knots would be an all-knot line and needs the guard, and 7-long lines are the clearer read. Cells in the discarded row and column are lost, which is thematically the reed tightening and the cloth narrowing.", "attacks": "big pieces; a squeeze on everything" },
+        { "id": "the_smash", "name": "Creeping Blockers", "tier": 2, "rule": "every third move, a random empty cell becomes a blocker", "attacks": "long slow levels; rewards clearing fast" },
+        { "id": "floats", "name": "Sticky Blocks", "tier": 3, "rule": "any move that clears no line leaves one of its blocks behind as a blocker", "attacks": "setup play, brutally — it demands a clear almost every turn" }
+      ]
+    }
+  ],
+
+  "_ifEveryStage": "If faults were ever moved to every stage rather than every fourth, this roster would need 12+ entries and the act tiers would have to become a per-stage escalation curve. docs/06 §6 argues against it: with twelve disruptions there is no baseline, nothing reads as special, and planning collapses into reacting."
+}

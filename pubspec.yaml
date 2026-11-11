@@ -1,0 +1,29 @@
+name: loomcraft
+description: "Blockascent: Block Puzzle — a no-gravity block placement puzzle wrapped in a roguelite campaign."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+  shared_preferences: ^2.3.3
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  # All tuning lives in data/*.json (spec §2.8). There is exactly one copy of
+  # these files: the repo root `data/` directory, which is also what the
+  # TypeScript oracle in reference/ reads. Do not duplicate them under assets/.
+  assets:
+    - data/curve.json
+    - data/economy.json
+    - data/powers.json
+    - data/faults.json

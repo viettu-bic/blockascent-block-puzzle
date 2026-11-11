@@ -1,0 +1,24 @@
+{
+  "_": "Run pacing. These are the numbers most likely to be wrong — keep them here, never inline, so tuning never needs a rebuild. tests/curve.sim.test.ts plays this curve with a floor-level greedy player and reports where runs actually die.",
+
+  "_evidence": "A greedy player with no lookahead scores ~158 per stage and peaks at x1.60. Its capability is roughly FLAT across stages (more allowance, but a dirtier carried-over board), so growth of 1.45 killed 100% of runs on stage 1. At 100 x1.25 it reaches a median of ~6 stages: stage 1 is free, stage 3-4 is the first real bite.",
+
+  "_revisit": "Growth must be re-steepened once the power draft exists. The design intends builds, not raw play, to keep pace with the curve — until powers land there is nothing to scale the player, so this curve is tuned against an unassisted player and will be too soft afterwards.",
+
+  "_stages": "12 stages, three acts of four, a fault stage ending each act (docs/06). Do NOT extend to 13+: stage 13 asks 9.2x floor capability and the curve runs away from any build the power pool can produce.",
+  "stages": 12,
+
+  "_scoring": "The combo multiplier — 'rhythm'. Kept here rather than inline in Dart so tuning never needs a rebuild (spec 2.8). lineBonus is indexed by lines cleared at once and is deliberately super-linear so multi-line setups pay.",
+  "scoring": {
+    "lineBonus": [0, 10, 25, 45, 70, 100],
+    "multStart": 1.0,
+    "multStep": 0.2,
+    "multCap": 4.0,
+    "patienceMax": 2
+  },
+
+  "baseTarget": 100,
+  "targetGrowth": 1.25,
+  "baseAllowance": 20,
+  "allowanceGrowth": 2
+}
