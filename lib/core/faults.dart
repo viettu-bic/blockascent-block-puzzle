@@ -1,5 +1,6 @@
-/// Fault stages — this design's bosses. Three per act, offered as a choice of
-/// three at the act's start, sitting at stages 4, 8 and 12.
+/// Fault stages — this design's bosses. Three per act, sitting at stages 4, 8
+/// and 12, and offered at the act's start — but only the ones **unlocked**
+/// (see [unlockedFaults]).
 ///
 /// The roster is data (`data/faults.json`); this file is the pure translation
 /// of one chosen fault into the rule changes the engine already understands.
@@ -82,6 +83,51 @@ class FaultRoster {
     (f) => f.id == id,
     orElse: () => throw ArgumentError('unknown fault: $id'),
   );
+}
+
+/// The faults of [act] a player with [cleared] behind them may choose from.
+///
+/// Tier 1 is always available; tier 2 opens once that act's tier 1 has been
+/// cleared, tier 3 once tier 2 has. So the list is never empty and never
+/// skips a rung: a player always has exactly one more option than they have
+/// proved.
+///
+/// **Why this is not a violation of "never take away choices".** docs/06 §6
+/// defends choice against *randomness* — a modifier that invalidates a build
+/// through no decision of the player's. This is the opposite: permanent,
+/// account-wide, earned, and fully visible. Offering a first-time player three
+/// weaving defects they have never met and asking them to pick is not agency,
+/// it is a guess — and the measured 0%-unlock median death is stage 4, the
+/// act-1 fault stage, so that guess was being made at the exact moment runs
+/// ended.
+///
+/// **What it costs, and both halves matter.** The act's tier-1 fault becomes
+/// *mandatory* for a first clear, so each one must be survivable by every
+/// archetype rather than docs/06 §5's "at least three"; Tight Reed (act 3, a
+/// 7×7 board) is the one most likely to fail that tightened bar. And because
+/// harder faults pay better drafts, fault progression is now a second power
+/// axis stacked on the shop, so it belongs inside the meta budget the gates
+/// measure (`test/sim/gates_sim_test.dart`), not outside it.
+/// Which fault in [act] has to be cleared before [id] opens.
+///
+/// Null for tier 1, which is always available. Used to tell the player *what*
+/// unlocks a locked option rather than only that it is locked.
+FaultDef? faultUnlockedBy(FaultAct act, String id) {
+  final byTier = [...act.faults]..sort((a, b) => a.tier - b.tier);
+  for (var i = 1; i < byTier.length; i++) {
+    if (byTier[i].id == id) return byTier[i - 1];
+  }
+  return null;
+}
+
+List<FaultDef> unlockedFaults(FaultAct act, Set<String> cleared) {
+  final byTier = [...act.faults]..sort((a, b) => a.tier - b.tier);
+  final offered = <FaultDef>[];
+  for (final f in byTier) {
+    offered.add(f);
+    if (!cleared.contains(f.id)) break;
+  }
+  return offered;
 }
 
 /// Everything a fault can change about one stage.

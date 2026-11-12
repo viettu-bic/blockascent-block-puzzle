@@ -15,6 +15,7 @@ import '../core/types.dart';
 import '../data/tuning.dart';
 import '../game/account.dart';
 import '../render/theme.dart';
+import 'loadout_screen.dart';
 import 'widgets.dart';
 
 class ShopScreen extends StatefulWidget {
@@ -69,77 +70,102 @@ class _ShopScreenState extends State<ShopScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: p.background,
-      appBar: AppBar(
-        backgroundColor: p.background,
-        title: const Text('Shop'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(child: SpoolTag(palette: p, spools: a.spools)),
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            'Blocks you own can be picked for your set before a run. '
-            'Buying more never makes your set worse — you choose what goes '
-            'in it.',
-            style: TextStyle(color: p.inkMuted, fontSize: FontSize.label, height: 1.4),
-          ),
-          const SizedBox(height: 18),
-          for (final tier in [1, 2, 3, 4]) ...[
-            _SectionHeader(
-              palette: p,
-              title: 'Tier $tier',
-              trailing: tier == 1
-                  ? 'free'
-                  : '${a.ownedInTier(tier)} / ${shapesOfTier(tier).length}',
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: [
-                for (final s in shapesOfTier(tier))
-                  _MotifTile(
-                    palette: p,
-                    shapeId: s.id,
-                    owned: a.owns(s.id),
-                    cost: tier == 1 ? 0 : _costOf(s),
-                    affordable: a.spools >= _costOf(s),
-                    onBuy: () => _buyShape(s),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 22),
-          ],
-          _SectionHeader(palette: p, title: 'Upgrades'),
-          const SizedBox(height: 8),
-          for (final u in widget.economy.upgrades.values)
+    return SkyBackground(
+      palette: p,
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          title: const Text('Shop'),
+          actions: [
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: _UpgradeRow(
-                palette: p,
-                upgrade: u,
-                owned: a.hasUpgrade(u.id),
-                affordable: a.spools >= u.cost,
-                onBuy: () => _buyUpgrade(u),
+              padding: const EdgeInsets.only(right: 16),
+              child: Center(
+                child: SpoolTag(palette: p, spools: a.spools),
               ),
             ),
-          const SizedBox(height: 24),
-          Text(
-            'A fourth tray slot is deliberately not for sale. It is the '
-            'biggest power swing in the game and it changes the refill rule '
-            'the difficulty rests on, so it lives in the upgrade picks, where '
-            'it costs you a choice.',
-            style: TextStyle(color: p.inkMuted, fontSize: FontSize.label, height: 1.4),
-          ),
-          const SizedBox(height: 40),
-        ],
+          ],
+        ),
+        body: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            Text(
+              'Buying more never makes your set worse — you choose what goes '
+              'in it, right here.',
+              style: TextStyle(
+                color: p.inkMuted,
+                fontSize: FontSize.label,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 18),
+            // The set picker lives here rather than behind its own menu entry:
+            // buying a block and deciding whether to play it are one decision,
+            // and split across two screens a player bought something and then
+            // had to go elsewhere to use it (loadout_screen.dart).
+            LoadoutPicker(
+              account: a,
+              palette: p,
+              onChanged: () {
+                setState(() {});
+                widget.onChanged();
+              },
+            ),
+            const SizedBox(height: 26),
+            for (final tier in [1, 2, 3, 4]) ...[
+              _SectionHeader(
+                palette: p,
+                title: 'Tier $tier',
+                trailing: tier == 1
+                    ? 'free'
+                    : '${a.ownedInTier(tier)} / ${shapesOfTier(tier).length}',
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final s in shapesOfTier(tier))
+                    _MotifTile(
+                      palette: p,
+                      shapeId: s.id,
+                      owned: a.owns(s.id),
+                      cost: tier == 1 ? 0 : _costOf(s),
+                      affordable: a.spools >= _costOf(s),
+                      onBuy: () => _buyShape(s),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 22),
+            ],
+            _SectionHeader(palette: p, title: 'Upgrades'),
+            const SizedBox(height: 8),
+            for (final u in widget.economy.upgrades.values)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _UpgradeRow(
+                  palette: p,
+                  upgrade: u,
+                  owned: a.hasUpgrade(u.id),
+                  affordable: a.spools >= u.cost,
+                  onBuy: () => _buyUpgrade(u),
+                ),
+              ),
+            const SizedBox(height: 24),
+            Text(
+              'A fourth tray slot is deliberately not for sale. It is the '
+              'biggest power swing in the game and it changes the refill rule '
+              'the difficulty rests on, so it lives in the upgrade picks, where '
+              'it costs you a choice.',
+              style: TextStyle(
+                color: p.inkMuted,
+                fontSize: FontSize.label,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }
@@ -225,13 +251,19 @@ class _MotifTile extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   shapeName(shapeId),
-                  style: TextStyle(color: palette.ink, fontSize: FontSize.micro),
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: FontSize.micro,
+                  ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
                 Text(
                   LoomPalette.sizeName(s.cellCount),
-                  style: TextStyle(color: palette.inkMuted, fontSize: FontSize.micro),
+                  style: TextStyle(
+                    color: palette.inkMuted,
+                    fontSize: FontSize.micro,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 if (owned)
@@ -277,8 +309,7 @@ class _UpgradeRow extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
-          border:
-              Border.all(color: owned ? palette.accent : palette.gridLine),
+          border: Border.all(color: owned ? palette.accent : palette.gridLine),
         ),
         child: Row(
           children: [
@@ -297,7 +328,10 @@ class _UpgradeRow extends StatelessWidget {
                   if (upgrade.effect.isNotEmpty)
                     Text(
                       upgrade.effect,
-                      style: TextStyle(color: palette.inkMuted, fontSize: FontSize.label),
+                      style: TextStyle(
+                        color: palette.inkMuted,
+                        fontSize: FontSize.label,
+                      ),
                     ),
                 ],
               ),

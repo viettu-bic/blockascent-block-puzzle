@@ -32,7 +32,10 @@ void main() {
     return (hi + 0.05) / (lo + 0.05);
   }
 
-  final themes = {'dark': LoomPalette.dark, 'light': LoomPalette.light};
+  // One palette since 2026-11-12 (`docs/07` §4i). Still a map and still a
+  // loop: every guarantee below is a property of *a* palette, not of this one,
+  // so a second palette added later is measured the moment it is named here.
+  final themes = {'dark': LoomPalette.dark};
 
   themes.forEach((name, p) {
     group('$name theme', () {
@@ -72,9 +75,9 @@ void main() {
       });
 
       test('onAccent is readable on an accent fill', () {
-        // The primary button. In light mode a gold that works as a fill is far
-        // too pale to read as text, which is exactly why these are separate
-        // tokens.
+        // The primary button. `onAccent` and `accent` are separate tokens
+        // because text on a fill is a different job from the fill itself —
+        // the light palette made that unmissable and this outlived it.
         expect(contrast(p.onAccent, p.accent), greaterThanOrEqualTo(4.5));
       });
 
@@ -154,7 +157,7 @@ void main() {
       });
 
       test('rarity colours are visible on a card panel', () {
-        final table = rarityColoursFor(p);
+        final table = rarityColours;
         expect(table, hasLength(3));
         for (final entry in table.entries) {
           expect(
@@ -166,7 +169,7 @@ void main() {
       });
 
       test('rarity colours differ from each other, not just from the card', () {
-        final table = rarityColoursFor(p).values.toList();
+        final table = rarityColours.values.toList();
         for (var i = 0; i < table.length; i++) {
           for (var j = i + 1; j < table.length; j++) {
             expect(contrast(table[i], table[j]), greaterThan(1.25));

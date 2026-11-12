@@ -7,13 +7,14 @@ import 'package:loomcraft/data/tuning.dart';
 import 'package:loomcraft/game/account.dart';
 import 'package:loomcraft/game/run_controller.dart';
 import 'package:loomcraft/platform/haptics.dart';
+import 'package:loomcraft/platform/sfx.dart';
 import 'package:loomcraft/platform/storage.dart';
 import 'package:loomcraft/render/board_painter.dart';
 import 'package:loomcraft/render/layout.dart';
 import 'package:loomcraft/render/theme.dart';
 import 'package:loomcraft/ui/app.dart';
 import 'package:loomcraft/ui/game_screen.dart';
-import 'package:loomcraft/ui/loadout_screen.dart';
+import 'package:loomcraft/ui/how_to_play_screen.dart';
 import 'package:loomcraft/ui/shop_screen.dart';
 
 import '../support/load_tuning.dart';
@@ -57,37 +58,79 @@ void main() {
   LoomcraftApp app() => LoomcraftApp(
     storageOverride: MemoryStorage(),
     tuningOverride: tuning,
+    // Silent: a real Sfx reaches the audioplayers platform channel, which a
+    // widget test does not have.
+    sfxOverride: Sfx(enabled: false),
   );
 
   group('boot', () {
+    /// A fresh install opens the rules screen over the menu before anything
+    /// else — that is the FTUE, not an accident — so a boot test has to get
+    /// past it first. Dismissing it is also the assertion that it appeared.
+    Future<void> dismissTutorial(WidgetTester tester) async {
+      expect(
+        find.text('How to Play'),
+        findsOneWidget,
+        reason: 'a fresh install should open the rules by itself',
+      );
+      // The button sits under the four rule cards, so it is below the fold on
+      // a phone — which is the point: you scroll past the rules to continue.
+      await tester.dragUntilVisible(
+        find.text('Got it'),
+        find.byType(ListView),
+        const Offset(0, -300),
+      );
+      await tester.tap(find.text('Got it'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('a fresh install opens the rules by itself, once', (
+      tester,
+    ) async {
+      await pumpPhone(tester, app());
+      await dismissTutorial(tester);
+      // Back on the menu, and it does not come back.
+      expect(find.text('Play'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('Rows AND columns clear'), findsNothing);
+    });
+
     testWidgets('loads the real data/*.json and shows the workshop', (
       tester,
     ) async {
       await pumpPhone(tester, app());
+      await dismissTutorial(tester);
       expect(find.text('Play'), findsOneWidget);
-      expect(find.text('Your Blocks'), findsOneWidget);
-      expect(find.text('Shop'), findsOneWidget);
+      // The set picker moved into the shop, so the menu's second slot is the
+      // rules now (docs/08 E7).
+      expect(find.text('How to Play'), findsOneWidget);
+      expect(find.text('Shop & Set'), findsOneWidget);
     });
 
     testWidgets('starting a run reaches the act 1 fault choice', (
       tester,
     ) async {
       await pumpPhone(tester, app());
+      await dismissTutorial(tester);
       await tester.tap(find.text('Play'));
       await tester.pumpAndSettle();
       expect(find.text('Act 1'), findsOneWidget);
+      // All three are shown — a ladder the player cannot see is not a ladder —
+      // and the two locked ones carry what unlocks them.
       expect(find.text('Tight Budget'), findsOneWidget);
       expect(find.text('Columns Only'), findsOneWidget);
       expect(find.text('Short Fuse'), findsOneWidget);
+      expect(find.textContaining('Locked'), findsNWidgets(2));
     });
 
     testWidgets('choosing a fault shows the board and the HUD', (
       tester,
     ) async {
       await pumpPhone(tester, app());
+      await dismissTutorial(tester);
       await tester.tap(find.text('Play'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Columns Only'));
+      await tester.tap(find.text('Tight Budget'));
       await tester.pumpAndSettle();
 
       // The stage and the act share one line now, so they fit beside the
@@ -123,7 +166,7 @@ void main() {
     });
 
     Widget host(Widget child) => MaterialApp(
-      theme: buildTheme(LoomPalette.dark, Brightness.dark),
+      theme: buildTheme(LoomPalette.dark),
       home: child,
     );
 
@@ -203,30 +246,51 @@ void main() {
         ),
       );
       expect(find.text('Shop'), findsOneWidget);
-      expect(find.text('TIER 1'), findsOneWidget);
+      // The set picker sits above the tiers now, so the first tier header is
+      // below the fold on a phone.
+      expect(find.text('YOUR SET'), findsOneWidget);
       await tester.dragUntilVisible(
-        find.text('Starting Combo'),
+        find.text('TIER 1'),
         find.byType(ListView),
         const Offset(0, -300),
       );
-      expect(find.text('Starting Combo'), findsOneWidget);
+      expect(find.text('TIER 1'), findsOneWidget);
+      // 'Combo Floor', not 'Starting Combo': the upgrades were rebuilt as
+      // structural buys on 2026-11-12 (docs/04 §9). The header is checked
+      // first, because there are eleven upgrades now and scrolling to the
+      // one in the middle of the list leaves it off the top.
+      await tester.dragUntilVisible(
+        find.text('UPGRADES'),
+        find.byType(ListView),
+        const Offset(0, -300),
+      );
       expect(find.text('UPGRADES'), findsOneWidget);
+      await tester.dragUntilVisible(
+        find.text('Combo Floor'),
+        find.byType(ListView),
+        const Offset(0, -300),
+      );
+      expect(find.text('Combo Floor'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('the loadout screen caps selection at the slot count', (
+    testWidgets('the set picker in the shop caps selection at the slots', (
       tester,
     ) async {
+      // The picker lives in the shop now: buying a block and deciding whether
+      // to play it are one decision (docs/08 E7).
       await pumpPhone(
         tester,
         host(
-          LoadoutScreen(
+          ShopScreen(
             account: account,
+            economy: controller.tuning.economy,
             palette: LoomPalette.dark,
             onChanged: () {},
           ),
         ),
       );
+      expect(find.text('YOUR SET'), findsOneWidget);
       expect(find.text('8 / 8'), findsOneWidget);
 
       // Tapping an unselected motif while full must change nothing.
@@ -240,6 +304,48 @@ void main() {
       await tester.pumpAndSettle();
       expect(account.loadout, hasLength(7));
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('how to play', () {
+    testWidgets('names the four rules a player cannot guess', (tester) async {
+      await pumpPhone(
+        tester,
+        MaterialApp(
+          theme: buildTheme(LoomPalette.dark),
+          home: const HowToPlayScreen(palette: LoomPalette.dark),
+        ),
+      );
+      // The two nobody brings with them from other block games.
+      expect(find.text('Rows AND columns clear'), findsOneWidget);
+      expect(
+        find.text('The tray refills only when it is empty'),
+        findsOneWidget,
+      );
+      // And the two this redesign created.
+      expect(find.text('Clearing is the only way to score'), findsOneWidget);
+      await tester.dragUntilVisible(
+        find.text('A one-cell hole needs a one-cell block'),
+        find.byType(ListView),
+        const Offset(0, -300),
+      );
+      expect(
+        find.text('A one-cell hole needs a one-cell block'),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+
+    test('a fresh account has not seen it; a loaded one has', () {
+      // A new install gets the tutorial; an existing save does not get
+      // interrupted by one it never asked for.
+      expect(Account().seenHowToPlay, isFalse);
+      expect(Account.fromJson({'spools': 10}).seenHowToPlay, isTrue);
+      expect(
+        Account.fromJson(Account().toJson()).seenHowToPlay,
+        isFalse,
+        reason: 'the flag round-trips rather than defaulting on save',
+      );
     });
   });
 

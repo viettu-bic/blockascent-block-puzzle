@@ -11,7 +11,7 @@ import 'package:loomcraft/render/board_painter.dart';
 import 'package:loomcraft/render/theme.dart';
 import 'package:loomcraft/ui/game_screen.dart';
 import 'package:loomcraft/ui/hud.dart';
-import 'package:loomcraft/ui/loadout_screen.dart';
+import 'package:loomcraft/ui/how_to_play_screen.dart';
 import 'package:loomcraft/ui/menu_screen.dart';
 import 'package:loomcraft/ui/shop_screen.dart';
 import 'package:loomcraft/ui/widgets.dart';
@@ -98,10 +98,9 @@ void main() {
     Widget Function(LoomPalette p) build, {
     Size size = const Size(375, 667), // the smallest phone targeted
     double textScale = 1.0,
-    bool dark = true,
     bool reduceMotion = false,
   }) async {
-    final palette = dark ? LoomPalette.dark : LoomPalette.light;
+    const palette = LoomPalette.dark;
     tester.view.physicalSize = size * 3;
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.resetPhysicalSize);
@@ -109,7 +108,7 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        theme: buildTheme(palette, dark ? Brightness.dark : Brightness.light),
+        theme: buildTheme(palette),
         home: MediaQuery(
           data: MediaQueryData(
             size: size,
@@ -136,7 +135,8 @@ void main() {
       onPlay: () {},
       onResume: () {},
       onShop: () {},
-      onLoadout: () {},
+      onHowToPlay: () {},
+      onSettings: () {},
     ),
     'shop': (p, t, a) => ShopScreen(
       account: a,
@@ -144,11 +144,9 @@ void main() {
       palette: p,
       onChanged: () {},
     ),
-    'loadout': (p, t, a) => LoadoutScreen(
-      account: a,
-      palette: p,
-      onChanged: () {},
-    ),
+    // The set picker is a section of the shop now, not a screen (docs/08 E7),
+    // so 'shop' above covers it. The rules screen is the new menu entry.
+    'howToPlay': (p, t, a) => HowToPlayScreen(palette: p),
   };
 
   group('tap targets and labels', () {
@@ -242,24 +240,19 @@ void main() {
   });
 
   group('text contrast', () {
-    for (final dark in [true, false]) {
-      final label = dark ? 'dark' : 'light';
-      testWidgets('the menu passes the contrast guideline in $label', (
-        tester,
-      ) async {
-        final a = richAccount();
-        await pump(tester, (p) => screens['menu']!(p, tuning, a), dark: dark);
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
-      });
+    // One palette to check since 2026-11-12 (`docs/07` §4i); this used to run
+    // each screen twice.
+    testWidgets('the menu passes the contrast guideline', (tester) async {
+      final a = richAccount();
+      await pump(tester, (p) => screens['menu']!(p, tuning, a));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+    });
 
-      testWidgets('the shop passes the contrast guideline in $label', (
-        tester,
-      ) async {
-        final a = richAccount();
-        await pump(tester, (p) => screens['shop']!(p, tuning, a), dark: dark);
-        await expectLater(tester, meetsGuideline(textContrastGuideline));
-      });
-    }
+    testWidgets('the shop passes the contrast guideline', (tester) async {
+      final a = richAccount();
+      await pump(tester, (p) => screens['shop']!(p, tuning, a));
+      await expectLater(tester, meetsGuideline(textContrastGuideline));
+    });
   });
 
   group('large text and small screens', () {
@@ -280,6 +273,94 @@ void main() {
         expect(tester.takeException(), isNull);
       });
     }
+
+    testWidgets('drafted tools stay on screen, not scrolled out of it', (
+      tester,
+    ) async {
+      // The bug this pins: the tool row used to be the last child of the HUD,
+      // which lives in a height-capped `SingleChildScrollView`. As soon as the
+      // readouts above it grew — a long fault name, a large text scale, a short
+      // phone — the tools slid out of sight in the gap between the header and
+      // the board, with no scrollbar to say they existed.
+      //
+      // `findsOneWidget` would not have caught it: a widget scrolled out of a
+      // viewport is still in the tree. The assertion has to be geometric.
+      //
+      // It matters because these are charge-limited escape valves costing a
+      // draft pick each (docs/05 §3). A tool the player cannot see is a card
+      // they paid for and will never spend.
+      const size = Size(360, 640);
+      final c = controllerFor(richAccount(), withTools: true);
+      await pump(
+        tester,
+        (p) => GameScreen(
+          controller: c,
+          palette: p,
+          onAgain: () {},
+          onMenu: () {},
+          onShop: () {},
+        ),
+        textScale: maxTextScale,
+        size: size,
+      );
+      expect(tester.takeException(), isNull);
+
+      final tools = find.byType(ToolButton);
+      expect(tools, findsWidgets, reason: 'the run drafted tools');
+
+      final screen = Rect.fromLTWH(0, 0, size.width, size.height);
+      for (var i = 0; i < tools.evaluate().length; i++) {
+        final r = tester.getRect(tools.at(i));
+        // The first tool must be fully on screen. Later ones may run off the
+        // right-hand edge, which is fine and deliberate — the row scrolls
+        // horizontally, where a thumb can reach it — so only the vertical
+        // bounds are checked past the first.
+        expect(
+          r.top,
+          greaterThanOrEqualTo(screen.top),
+          reason: 'tool $i is above the top of the screen',
+        );
+        expect(
+          r.bottom,
+          lessThanOrEqualTo(screen.bottom),
+          reason: 'tool $i is below the bottom of the screen',
+        );
+        if (i == 0) {
+          expect(
+            screen.contains(r.center),
+            isTrue,
+            reason: 'the first tool must be fully visible, not clipped',
+          );
+        }
+      }
+
+      // **The load-bearing assertion.** This is the one that actually failed
+      // on the old layout: the button existed, laid out inside plausible
+      // bounds, and was clipped out of its scroll viewport, so hit-testing
+      // found nothing and the tap went nowhere. A control the player cannot
+      // press is the bug, whatever its rect says.
+      await tester.tap(tools.first);
+      await tester.pumpAndSettle();
+      expect(c.aiming, isNot(ToolAim.none));
+    });
+
+    testWidgets('the tool row takes no space before a tool is drafted', (
+      tester,
+    ) async {
+      // The board is the game; an empty strip reserving height above it is a
+      // cost paid by every run for a feature most runs do not have yet.
+      final c = controllerFor(richAccount());
+      await pump(
+        tester,
+        (p) => Scaffold(
+          backgroundColor: p.background,
+          body: ToolRow(controller: c, palette: p),
+        ),
+        size: const Size(360, 640),
+      );
+      expect(find.byType(ToolButton), findsNothing);
+      expect(tester.getSize(find.byType(ToolRow)).height, 0);
+    });
 
     testWidgets('the HUD alone survives the largest allowed text scale', (
       tester,

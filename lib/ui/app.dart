@@ -16,7 +16,10 @@ import '../platform/storage.dart';
 import '../render/board_painter.dart';
 import '../render/theme.dart';
 import 'game_screen.dart';
-import 'loadout_screen.dart';
+import '../platform/music.dart';
+import '../platform/sfx.dart';
+import 'audio_settings.dart';
+import 'how_to_play_screen.dart';
 import 'menu_screen.dart';
 import 'shop_screen.dart';
 
@@ -25,6 +28,8 @@ class LoomcraftApp extends StatefulWidget {
     super.key,
     this.storageOverride,
     this.tuningOverride,
+    this.sfxOverride,
+    this.musicOverride,
   });
 
   /// Injected by tests; production opens shared preferences.
@@ -36,6 +41,14 @@ class LoomcraftApp extends StatefulWidget {
   /// itself, outside that zone.
   final Tuning? tuningOverride;
 
+  /// Injected silent in tests. Constructing a real [Sfx] reaches the
+  /// `audioplayers` platform channel, which a widget test does not have, and a
+  /// sound effect is never worth failing a test over.
+  final Sfx? sfxOverride;
+
+  /// Injected silent in tests, for the same reason as [sfxOverride].
+  final Music? musicOverride;
+
   @override
   State<LoomcraftApp> createState() => _LoomcraftAppState();
 }
@@ -45,6 +58,8 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
   Account? _account;
   Storage? _storage;
   Haptics? _haptics;
+  Sfx? _sfx;
+  Music? _music;
   RunController? _run;
   bool _inGame = false;
   bool _savedRunExists = false;
@@ -65,6 +80,9 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
           ? Account()
           : Account.fromJson(accountJson);
       final haptics = Haptics(enabled: account.hapticsEnabled);
+      final sfx = widget.sfxOverride ?? Sfx(enabled: account.sfxEnabled);
+      final music =
+          widget.musicOverride ?? Music(enabled: account.musicEnabled);
       final savedRun = await storage.read(runKey);
 
       if (!mounted) return;
@@ -73,8 +91,12 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
         _tuning = tuning;
         _account = account;
         _haptics = haptics;
+        _sfx = sfx;
+        _music = music;
         _savedRunExists = savedRun != null;
       });
+      // The app opens on the menu, so that is the track it opens on.
+      music.play(MusicTrack.menu);
     } on Object catch (e) {
       if (!mounted) return;
       // A boot failure is almost always a malformed data/*.json. Say so rather
@@ -84,10 +106,11 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
     }
   }
 
-  LoomPalette _paletteFor(BuildContext context) =>
-      MediaQuery.platformBrightnessOf(context) == Brightness.light
-          ? LoomPalette.light
-          : LoomPalette.dark;
+  /// The game has one palette and does not follow the system setting.
+  ///
+  /// See `docs/07` §4i: the night sky is the product, and a light mode of it
+  /// was a parchment star atlas — a second art direction to keep working,
+  /// measure and look at, for a theme that is about darkness.
 
   RunController _controller() {
     return _run ??= RunController(
@@ -95,12 +118,19 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
       account: _account!,
       storage: _storage!,
       haptics: _haptics!,
+      sfx: _sfx!,
     );
   }
+
+  /// Screen transitions own the track. `Music.play` is a no-op when the
+  /// track is already the current one, so opening the shop does not restart
+  /// the menu loop.
+  void _musicFor(MusicTrack track) => _music?.play(track);
 
   void _newRun() {
     final c = _controller();
     c.begin();
+    _musicFor(MusicTrack.gameplay);
     setState(() {
       _inGame = true;
       _savedRunExists = false;
@@ -112,6 +142,7 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
     final ok = await c.restore();
     if (!mounted) return;
     if (ok) {
+      _musicFor(MusicTrack.gameplay);
       setState(() => _inGame = true);
     } else {
       setState(() => _savedRunExists = false);
@@ -120,6 +151,7 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
   }
 
   void _toMenu() {
+    _musicFor(MusicTrack.menu);
     setState(() {
       _inGame = false;
       _run = null;
@@ -131,23 +163,23 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
 
   @override
   Widget build(BuildContext context) {
-    final palette = _paletteFor(context);
-    final brightness = MediaQuery.platformBrightnessOf(context);
-    final dark = brightness == Brightness.dark;
+    const palette = LoomPalette.dark;
 
     // Paint the status and navigation bars to match the app.
     //
     // Without this they stay the platform's grey and black, so the game sits
     // in a frame that belongs to a different product — the first thing you
     // notice on a device and the last thing a widget test can show you.
+    // Light icons on both bars, unconditionally: the app is dark whatever
+    // the system setting says, so following that setting here would put dark
+    // icons on a dark bar for every player who runs their phone in light mode.
     SystemChrome.setSystemUIOverlayStyle(
       SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
-        statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
-        statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+        statusBarIconBrightness: Brightness.light,
+        statusBarBrightness: Brightness.dark,
         systemNavigationBarColor: palette.background,
-        systemNavigationBarIconBrightness:
-            dark ? Brightness.light : Brightness.dark,
+        systemNavigationBarIconBrightness: Brightness.light,
         systemNavigationBarDividerColor: palette.background,
       ),
     );
@@ -155,7 +187,7 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
     return MaterialApp(
       title: gameFullTitle,
       debugShowCheckedModeBanner: false,
-      theme: buildTheme(palette, brightness),
+      theme: buildTheme(palette),
       // Honour the system text size, but only so far.
       //
       // The board is a square grid of fixed cells with the HUD above it and
@@ -192,6 +224,7 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
           if (_inGame) {
             return GameScreen(
               controller: _controller(),
+              music: _music,
               palette: palette,
               onAgain: _newRun,
               onMenu: _toMenu,
@@ -201,6 +234,18 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
               },
             );
           }
+          // The rules open themselves on the very first launch. A help page
+          // behind a menu button is read by nobody; an FTUE is the thing that
+          // appears. docs/08 E2, and it matters more now that 43% of early
+          // deaths are jams nobody explained (docs/04 §9).
+          if (!_account!.seenHowToPlay && !_howToPlayOpened) {
+            _howToPlayOpened = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                _openHowToPlay(context, palette, firstLaunch: true);
+              }
+            });
+          }
           return MenuScreen(
             account: _account!,
             palette: palette,
@@ -208,17 +253,43 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
             onPlay: _newRun,
             onResume: _resume,
             onShop: () => _openShop(context, palette),
-            onLoadout: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => LoadoutScreen(
-                  account: _account!,
-                  palette: palette,
-                  onChanged: _saveAccount,
-                ),
-              ),
+            onHowToPlay: () => _openHowToPlay(context, palette),
+            onSettings: () => showAudioSettings(
+              context,
+              account: _account!,
+              palette: palette,
+              haptics: _haptics,
+              sfx: _sfx,
+              music: _music,
+              onChanged: _saveAccount,
             ),
           );
         },
+      ),
+    );
+  }
+
+  /// Open the rules screen. [firstLaunch] turns the footer into "Got it" and
+  /// marks the account, so it opens itself exactly once.
+  /// Guards the one-shot: a rebuild must not queue a second push.
+  bool _howToPlayOpened = false;
+
+  void _openHowToPlay(
+    BuildContext context,
+    LoomPalette palette, {
+    bool firstLaunch = false,
+  }) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => HowToPlayScreen(
+          palette: palette,
+          onDone: firstLaunch
+              ? () {
+                  _account!.seenHowToPlay = true;
+                  _saveAccount();
+                }
+              : null,
+        ),
       ),
     );
   }

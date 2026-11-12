@@ -1,5 +1,7 @@
 {
-  "_": "Fault stages — this design's bosses. Three per act, offered as a choice of 3 at the act's start. See docs/06-stages-and-bosses.md. Every name is a real weaving defect.",
+  "_": "Fault stages — this design's bosses. Three per act, offered at the act's start — but only the tiers unlocked. See docs/06-stages-and-bosses.md. Every name is a real weaving defect.",
+
+  "_unlock": "Added 2026-11-11. Tier 1 is always offered; tier 2 opens once that act's tier 1 has been cleared, tier 3 once tier 2 has. Account-wide and permanent, because each act happens once per run — a per-run unlock would mean the player never saw anything but tier 1. The reason: the measured 0%-unlock median death is stage 4, which IS the act-1 fault stage, so a first-time player was being asked to choose blind between three defects they had never met at the exact moment their runs ended. That is a guess, not agency. It is not the thing docs/06 6 forbids, which is LOSING TO RANDOMNESS; this is permanent, earned and visible. Two consequences to hold onto: each act's tier-1 fault is now MANDATORY for a first clear, so it must be survivable by every archetype rather than 'at least three' (docs/06 5), and since harder faults pay better drafts, fault progression is a second power axis that belongs inside the gate budget.",
 
   "_placement": "Faults sit at stages 4, 8 and 12 — the last stage of each act. The act's three options are announced when the act begins, so the player can draft toward the one they chose.",
 

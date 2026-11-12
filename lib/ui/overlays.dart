@@ -40,10 +40,15 @@ class FaultChoiceOverlay extends StatelessWidget {
         child: StaggeredList(
           spacing: Space.md,
           children: [
+            // Every fault in the act, including the ones still locked. A
+            // locked option is shown greyed with what unlocks it, because a
+            // ladder you cannot see is not a ladder.
             for (final f in c.faultOptions)
               _FaultCard(
                 fault: f,
                 palette: palette,
+                locked: c.lockedFaultIds.contains(f.id),
+                unlockedBy: c.unlockedBy(f.id)?.name,
                 onTap: () => c.chooseFault(f.id),
               ),
           ],
@@ -58,11 +63,19 @@ class _FaultCard extends StatelessWidget {
     required this.fault,
     required this.palette,
     required this.onTap,
+    this.locked = false,
+    this.unlockedBy,
   });
 
   final FaultDef fault;
   final LoomPalette palette;
   final VoidCallback onTap;
+
+  /// Shown, but not choosable yet.
+  final bool locked;
+
+  /// Name of the fault that has to be cleared first, for the hint line.
+  final String? unlockedBy;
 
   static const Map<DraftReward, String> _rewardText = {
     DraftReward.normal: 'Reward: a normal upgrade pick',
@@ -74,17 +87,30 @@ class _FaultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    button: true,
-    label: '${fault.name}, ${_tierWords[fault.tier]}. ${fault.rule}. '
-        'Hurts ${fault.attacks}. ${_rewardText[fault.reward]}',
+    button: !locked,
+    enabled: !locked,
+    label: locked
+        ? '${fault.name}, ${_tierWords[fault.tier]}, locked. '
+            '${unlockedBy == null ? '' : 'Clear $unlockedBy to unlock. '}'
+            '${fault.rule}. Hurts ${fault.attacks}. '
+            '${_rewardText[fault.reward]}'
+        : '${fault.name}, ${_tierWords[fault.tier]}. ${fault.rule}. '
+            'Hurts ${fault.attacks}. ${_rewardText[fault.reward]}',
     excludeSemantics: true,
-    child: PressScale(
-      child: Material(
-        color: palette.panel,
-        borderRadius: BorderRadius.circular(14),
-        child: InkWell(
-          onTap: onTap,
+    child: Opacity(
+      // Dimmed rather than hidden: the point of a locked row is that the
+      // player can read what they are working toward.
+      opacity: locked ? 0.45 : 1,
+      child: PressScale(
+        enabled: !locked,
+        child: Material(
+          color: palette.panel,
           borderRadius: BorderRadius.circular(14),
+          child: InkWell(
+            // Null disables the ripple as well as the tap, so a locked row
+            // does not look pressable.
+            onTap: locked ? null : onTap,
+            borderRadius: BorderRadius.circular(14),
           child: Container(
             constraints: const BoxConstraints(minHeight: minTapTarget),
             padding: const EdgeInsets.all(Space.lg),
@@ -164,7 +190,30 @@ class _FaultCard extends StatelessWidget {
                     fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
+                if (locked) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.lock_outline,
+                          size: 14, color: palette.inkMuted),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          unlockedBy == null
+                              ? 'Locked'
+                              : 'Locked — clear $unlockedBy first',
+                          style: TextStyle(
+                            color: palette.inkMuted,
+                            fontSize: FontSize.label,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                ],
+              ),
             ),
           ),
         ),

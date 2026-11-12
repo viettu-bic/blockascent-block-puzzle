@@ -20,16 +20,27 @@ class Account {
     this.spools = 0,
     Set<String>? ownedShapeIds,
     Set<String>? upgrades,
+    Set<String>? faultsCleared,
     List<String>? loadout,
     this.milestones = const Milestones(),
     this.lastPlayedDay,
     this.hapticsEnabled = true,
+    this.sfxEnabled = true,
+    this.musicEnabled = true,
+    this.seenHowToPlay = false,
     this.runsStarted = 0,
     this.bestRunTotal = 0,
     this.wins = 0,
-  })  : ownedShapeIds = ownedShapeIds ?? {for (final s in tier1) s.id},
-        upgrades = upgrades ?? {},
-        loadout = loadout ?? [for (final s in tier1) s.id];
+  })  : // Copied, never adopted. Every one of these is mutated in place
+        // later — the shop adds to `ownedShapeIds` and `upgrades`, clearing a
+        // fault stage adds to `faultsCleared`, the loadout screen reorders
+        // `loadout` — so holding a caller's collection means an unmodifiable
+        // or shared one throws or leaks at the first purchase. A const set
+        // literal from a test or a fixture is the usual way to find out.
+        ownedShapeIds = {...(ownedShapeIds ?? {for (final s in tier1) s.id})},
+        upgrades = {...?upgrades},
+        faultsCleared = {...?faultsCleared},
+        loadout = [...(loadout ?? [for (final s in tier1) s.id])];
 
   int spools;
 
@@ -38,6 +49,15 @@ class Account {
 
   /// Ids from `data/economy.json.upgrades`.
   Set<String> upgrades;
+
+  /// Fault ids this account has cleared the stage of.
+  ///
+  /// Faults unlock by tier within their act (`unlockedFaults`): tier 1 is
+  /// always offered, tier 2 opens once tier 1 is cleared, tier 3 once tier 2
+  /// is. This has to live on the **account** rather than the run, because each
+  /// act happens once per run — a per-run set would mean the player never saw
+  /// anything but tier 1, ever.
+  Set<String> faultsCleared;
 
   /// The motifs chosen for the next run, in order.
   List<String> loadout;
@@ -48,15 +68,41 @@ class Account {
   String? lastPlayedDay;
 
   bool hapticsEnabled;
+  bool sfxEnabled;
+  bool musicEnabled;
+
+  /// Whether the rules screen has been shown. It opens itself once, on the
+  /// first launch, which is what makes it an FTUE rather than a help page
+  /// nobody opens (docs/08 E2).
+  bool seenHowToPlay;
   int runsStarted;
   int bestRunTotal;
   int wins;
 
   int get loadoutSlots =>
-      baseLoadoutSlots + (upgrades.contains('loadoutSlot9') ? 1 : 0);
+      baseLoadoutSlots +
+      (upgrades.contains('loadoutSlot9') ? 1 : 0) +
+      (upgrades.contains('loadoutSlot10') ? 1 : 0);
+
+  /// A 4th tray slot, bought rather than drafted.
+  ///
+  /// docs/04 §3 refused to sell this — biggest power swing, alters the
+  /// refill-on-empty rule, roughly halves jam risk. All true, and all three
+  /// are now reasons to sell it: halving jam risk is what the shop is *for*
+  /// (docs/08 B7). Second Shuttle stacks on top for a 5th.
+  int get extraTraySlots => hasUpgrade('fourthTraySlot') ? 1 : 0;
+
+  /// Handful: every refill contains a motif of 3 cells or fewer. The strongest
+  /// jam insurance in the shop.
+  bool get guaranteesSmallMotif => hasUpgrade('handful');
+
+  /// Toolkit: permanent tool charges, refreshed every stage.
+  Map<String, int> get toolChargesPerStage =>
+      hasUpgrade('toolkit') ? const {'unpick': 2} : const {};
 
   bool owns(String shapeId) => ownedShapeIds.contains(shapeId);
   bool hasUpgrade(String id) => upgrades.contains(id);
+  bool hasClearedFault(String id) => faultsCleared.contains(id);
 
   int ownedInTier(int tier) =>
       ownedShapeIds.where((id) => shape(id).tier == tier).length;
@@ -88,14 +134,18 @@ class Account {
 
   /* ---------------- the opening, as bought ---------------- */
 
-  /// Opening Rhythm: start each run at ×1.2 instead of ×1.0.
-  double? get openingMultiplier => hasUpgrade('openingRhythm') ? 1.2 : null;
+  /// Opening Rhythm: **every stage** starts at ×1.5 or better, not just the
+  /// run. A break no longer follows you across a stage boundary, which is the
+  /// difference between a number and a change to how a run feels.
+  double? get openingMultiplier => hasUpgrade('openingRhythm') ? 2.0 : null;
 
-  /// Starting Selvage: begin each run holding one shield.
-  int get openingShields => hasUpgrade('startingSelvage') ? 1 : 0;
+  /// Starting Selvage: two shields, refilled at every stage.
+  int get openingShields => hasUpgrade('startingSelvage') ? 3 : 0;
 
-  /// Opening Allowance: +2 placements on stage 1.
-  int get openingAllowanceBonus => hasUpgrade('openingAllowance') ? 2 : 0;
+  /// Opening Allowance: +3 placements on **every** stage, not only the first.
+  /// Allowance is what lets a player spend a placement digging out of a bad
+  /// board instead of scoring, so it is jam insurance as much as tempo.
+  int get openingAllowanceBonus => hasUpgrade('openingAllowance') ? 5 : 0;
 
   YarnUpgrades get yarnUpgrades => YarnUpgrades(
     fineYarn: hasUpgrade('fineYarn'),
@@ -119,20 +169,17 @@ class Account {
     'spools': spools,
     'owned': ownedShapeIds.toList(),
     'upgrades': upgrades.toList(),
+    'faultsCleared': faultsCleared.toList(),
     'loadout': loadout,
     'lastPlayedDay': lastPlayedDay,
     'haptics': hapticsEnabled,
+    'sfx': sfxEnabled,
+    'music': musicEnabled,
+    'seenHowToPlay': seenHowToPlay,
     'runsStarted': runsStarted,
     'bestRunTotal': bestRunTotal,
     'wins': wins,
-    'milestones': {
-      'bestStage': milestones.bestStage,
-      'bestRhythm': milestones.bestRhythm,
-      'runsFinished': milestones.runsFinished,
-      'clearedThreeAtOnce': milestones.clearedThreeAtOnce,
-      'lostToBrokenRhythm': milestones.lostToBrokenRhythm,
-      'jammed': milestones.jammed,
-    },
+    'milestones': milestones.toJson(),
   };
 
   /// Tolerant by design: a save written by an older build must load field by
@@ -153,23 +200,25 @@ class Account {
       upgrades: {
         for (final id in (j['upgrades'] as List?) ?? const []) id as String,
       },
+      faultsCleared: {
+        for (final id in (j['faultsCleared'] as List?) ?? const [])
+          id as String,
+      },
       loadout: [
         for (final id in (j['loadout'] as List?) ?? const [])
           if (owned.contains(id)) id as String,
       ],
       lastPlayedDay: j['lastPlayedDay'] as String?,
       hapticsEnabled: (j['haptics'] as bool?) ?? true,
+      sfxEnabled: (j['sfx'] as bool?) ?? true,
+      musicEnabled: (j['music'] as bool?) ?? true,
+      // An existing save has already played, so do not interrupt it with a
+      // tutorial it did not ask for.
+      seenHowToPlay: (j['seenHowToPlay'] as bool?) ?? true,
       runsStarted: (j['runsStarted'] as num?)?.toInt() ?? 0,
       bestRunTotal: (j['bestRunTotal'] as num?)?.toInt() ?? 0,
       wins: (j['wins'] as num?)?.toInt() ?? 0,
-      milestones: Milestones(
-        bestStage: (m['bestStage'] as num?)?.toInt() ?? 0,
-        bestRhythm: (m['bestRhythm'] as num?)?.toDouble() ?? 1.0,
-        runsFinished: (m['runsFinished'] as num?)?.toInt() ?? 0,
-        clearedThreeAtOnce: (m['clearedThreeAtOnce'] as bool?) ?? false,
-        lostToBrokenRhythm: (m['lostToBrokenRhythm'] as bool?) ?? false,
-        jammed: (m['jammed'] as bool?) ?? false,
-      ),
+      milestones: Milestones.fromJson(Map<String, dynamic>.from(m)),
     );
     if (account.loadout.isEmpty) {
       account.loadout = owned.toList();

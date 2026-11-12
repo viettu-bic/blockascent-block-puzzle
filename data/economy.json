@@ -16,27 +16,31 @@
   },
 
   "shapeCosts": {
-    "_": "Tier 1 is free at install. 17 shapes to unlock, 14,020 spools total.",
-    "_onramp": "The first tier-2 motif costs 40, not 100. The first unlock is the single most important number in the economy: it is the first time the game proves that losing pays, and it has to land on run 1 for a HUMAN, not for the sim. The rest of tier 2 absorbs the discount, so the tier total barely moves.",
-    "tier2": [40, 110, 170, 250, 330, 420],
-    "tier3": [500, 620, 760, 920, 1100, 1300],
-    "tier4": [1100, 1300, 1500, 1700, 1900]
+    "_": "Tier 1's five are free at install. 17 motifs to unlock, 13,680 spools total. dot alone is tier 4, at 3,600 - the single most expensive purchase in the game.",
+    "_inverted": "Re-weighted 2026-11-11, the other half of the roster inversion in lib/core/shapes.dart. Pricing used to run size-ascending, so the small liquid motifs were free and the big blocks cost 12,700 of 13,730 spools - and at 100% unlocks the loadout was entirely tiers 1-2, so almost the whole shape economy bought pieces nobody fields. Now the big blocks are cheap and the two PRECISION motifs (i2, dot) are the most expensive purchases in the game. Total content is unchanged; what it buys is not.",
+    "_perSlot": "A tier's prices are per PURCHASE SLOT, not per motif: costOfNthShapeInTier indexes by how many of that tier you already own. That is why dot and i2 need a tier of their own - inside a shared tier a player would simply buy them first at the cheapest slot price.",
+    "tier2": [40, 120, 220, 340, 480],
+    "tier3": [300, 380, 460, 550, 650, 760, 880, 1000, 1150, 1300, 1450],
+    "tier4": [3600]
   },
 
   "upgrades": {
-    "_": "8,700 spools total. Both tracks open from run 1 — unlike the original, upgrades are NOT gated behind unlocking every shape.",
-    "classicMode": 400,
-    "dailyChallenge": 0,
-    "loadoutSlot9": 1800,
-    "openingRhythm": { "cost": 700, "effect": "start each run at x1.2 instead of x1.0" },
-    "openingAllowance": { "cost": 900, "effect": "+2 placements on stage 1" },
-    "startingSelvage": { "cost": 1300, "effect": "begin each run holding one shield" },
-    "fineYarn": { "cost": 600, "effect": "+1 value to 1- and 2-cell motifs" },
-    "standardYarn": { "cost": 1600, "effect": "+1 value to 3- and 4-cell motifs" },
-    "heavyYarn": { "cost": 1400, "effect": "+1 value to 5-cell and larger motifs" }
+    "_": "15,400 spools. Rebuilt 2026-11-12: these used to be seven small flat numbers (+1 value, +2 moves, one shield) and they are now STRUCTURAL - slots, charges, guarantees, allowance - because the shop's job under docs/08 B7 is to sell a player out of jams, and a flat +1 cannot do that.",
+    "_onAxis": "Every one of these reduces jam risk or buys the tempo to play around a bad board. That is deliberate: a first run dies to a jam 58% of the time, so what the player wants is liquidity, slots and escape valves. Score upgrades (the yarns) are still here and still matter, but they are no longer the whole shop.",
+    "fourthTraySlot": { "cost": 2600, "effect": "a 4th block in the tray" },
+    "loadoutSlot9": { "cost": 900, "effect": "pick 9 blocks for your set instead of 8" },
+    "loadoutSlot10": { "cost": 1600, "effect": "pick 10 blocks for your set instead of 9" },
+    "handful": { "cost": 2200, "effect": "every refill includes a block of 3 cells or fewer" },
+    "toolkit": { "cost": 1400, "effect": "two Eraser charges every level" },
+    "openingAllowance": { "cost": 1000, "effect": "+5 moves on every level" },
+    "openingRhythm": { "cost": 800, "effect": "every level starts at x2.0 combo or better" },
+    "startingSelvage": { "cost": 1300, "effect": "hold 3 shields, refilled every level" },
+    "fineYarn": { "cost": 600, "effect": "+3 value to 1- and 2-cell blocks" },
+    "standardYarn": { "cost": 1600, "effect": "+3 value to 3- and 4-cell blocks" },
+    "heavyYarn": { "cost": 1400, "effect": "+3 value to 5-cell and larger blocks" }
   },
 
-  "_notIncluded": "A 4th tray slot is deliberately NOT a permanent upgrade. It is the single largest power swing in the game and it alters the refill-on-empty rule the whole difficulty rests on. It belongs in the in-run draft, where it costs a pick.",
+  "_fourthSlotIsForSale": "docs/04 3 refused to sell a 4th tray slot: 'the single largest power swing in the game', it 'alters the refill-on-empty rule the whole difficulty rests on', it 'roughly halves jam risk'. Every one of those is true and all three are now REASONS TO SELL IT. Under docs/08 B7 halving jam risk is precisely what the shop is for, and the refill-on-empty rule is the difficulty the player is buying their way out of. Second Shuttle stays in the draft and stacks on top, so a drafted 5th slot is still a real pick.",
 
-  "_invariant": "Full meta must be worth about +4 stages of median depth and no more, and most of that must come from BREADTH — motifs owned, loadout slots — not from flat stat increases (docs/06 §3 amends the +2 first written here). Zero-meta median is stage 6; full-meta median should land near stage 10-11 against a 12-stage ladder. If the simulation says 12 reliably, cut power before cutting cost."
+  "_invariant": "The shop sells LIQUIDITY, and its job is measured on the jam rate: a 0%-unlock run dies to a jam about 58% of the time, buying i2 takes that to 20%, i3 and i4 to 7%, and a full account to 0%. That decline IS the progression curve and it is something a player can feel. The +4-stages-of-median-depth budget this field used to carry is GONE (docs/04 rule 2): never met, never visible from inside the game, and in arithmetic conflict with the three gates - if 100% unlocks must win reliably at median 12 and 0% must die around 6-7, the lift is +5 to +6 by definition. Three gates, all holding as of 2026-11-12: 0% jam-led and unwinnable, 85% winnable with a good run (19%), 100% reliable (63%). And note which lever got the last one: starter cards are the floor, targetGrowth moves everything at once, and an UPGRADE is the only thing a 0%-unlock account does not have - so making purchases strong raises the ceiling and leaves the floor alone."
 }

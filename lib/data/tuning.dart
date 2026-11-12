@@ -170,12 +170,14 @@ class Economy {
 }
 
 const Map<String, String> upgradeNames = {
-  'classicMode': 'Classic Mode',
-  'dailyChallenge': 'Daily Challenge',
+  'fourthTraySlot': 'Fourth Tray Slot',
   'loadoutSlot9': 'Ninth Block Slot',
-  'openingRhythm': 'Starting Combo',
-  'openingAllowance': 'Extra Starting Moves',
-  'startingSelvage': 'Starting Shield',
+  'loadoutSlot10': 'Tenth Block Slot',
+  'handful': 'Small Block Guarantee',
+  'toolkit': 'Toolkit',
+  'openingRhythm': 'Combo Floor',
+  'openingAllowance': 'Extra Moves',
+  'startingSelvage': 'Shields',
   'fineYarn': 'Small Block Bonus',
   'standardYarn': 'Mid Block Bonus',
   'heavyYarn': 'Big Block Bonus',
@@ -250,6 +252,7 @@ PowerPool parsePowers(Map<String, dynamic> j) {
           gain: (p['gain'] as num).toInt(),
           effect: p['effect'] as String,
           gamble: (p['gamble'] as bool?) ?? false,
+          measured: (p['measured'] as bool?) ?? false,
         ),
     ],
   );

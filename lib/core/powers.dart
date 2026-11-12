@@ -42,6 +42,7 @@ class PowerDef {
     required this.gain,
     required this.effect,
     this.gamble = false,
+    this.measured = false,
   });
 
   final String id;
@@ -63,6 +64,13 @@ class PowerDef {
 
   /// Trades depth for currency, so it is excluded from the rarity averages.
   final bool gamble;
+
+  /// True when [gain] came out of the simulation rather than out of a guess.
+  ///
+  /// Worth keeping distinct: the estimates this pool shipped with were wrong by
+  /// 2× to 8× in **both** directions, so a reader needs to know which numbers
+  /// are evidence. `test/sim/meta_sim.dart`, `measureCard`.
+  final bool measured;
 
   bool get isInitial => unlock == 'initial';
 
@@ -103,6 +111,7 @@ const Map<String, String> powerNames = {
   'double_pick': 'Double Combo',
   'treadle_rhythm': 'Combo Floor',
   'selvage': 'Shield',
+  'tabby': 'Points Per Block',
   'temple': 'Free Miss',
   'patience': 'Extra Patience',
   'floating_selvage': 'Soft Landing',
@@ -263,17 +272,33 @@ class PowerSet {
   /* ---------------- derived numbers ---------------- */
 
   /// Per-cell value for a motif of this size and identity.
+  /// Points a single cell of a placed motif is worth.
+  ///
+  /// **Starts at zero.** Placing a block scores nothing on its own as of
+  /// 2026-11-12 — points come from clearing a row or a column, full stop. It
+  /// used to start at 1, which paid for every placement whether it achieved
+  /// anything or not: about 44% of a stage's score for putting a shape down.
+  ///
+  /// Placement scoring is now something you *buy or draft*, band by band. The
+  /// three bought yarns turn it on for their size band permanently, the yarn
+  /// cards do it for a run, Slub Yarn does it for one motif you name, and
+  /// **Tabby** turns it on across the board. That makes the whole yarn family
+  /// an income stream a player opts into rather than a flat bonus everybody
+  /// already has, and it is why none of them is dead without the others
+  /// (docs/05 §10).
   int cellValueFor(int cellCount, String shapeId) {
-    var v = 1;
+    var v = 0;
+    // Tabby: every band scores, modestly.
+    v += stacksOf('tabby');
     if (cellCount <= 2) {
       v += 2 * stacksOf('fine_yarn');
-      if (yarn.fineYarn) v += 1;
+      if (yarn.fineYarn) v += 3;
     } else if (cellCount <= 4) {
       v += stacksOf('standard_yarn');
-      if (yarn.standardYarn) v += 1;
+      if (yarn.standardYarn) v += 3;
     } else {
       v += stacksOf('heavy_yarn');
-      if (yarn.heavyYarn) v += 1;
+      if (yarn.heavyYarn) v += 3;
     }
     v += 2 * stacksOf('gilt_thread');
     v += 3 * motifsFor('slub_yarn').where((id) => id == shapeId).length;
@@ -328,6 +353,29 @@ class PowerSet {
   ///
   /// [rows] / [cols] are the lines this placement completed, [touchesEdge]
   /// whether any of its cells sit on the board boundary, and
+  /// **Both of this card family's buffs were tried and reverted on
+  /// 2026-11-11, and the reason is the most useful thing C5 produced.**
+  ///
+  /// Quick Shuttle measured 3% and Temple 2%, both far below their common
+  /// band, so both were strengthened: the rhythm step doubled, and Temple
+  /// became a break floor. Measured, each one on its own raised the
+  /// **0%-unlock median from stage 6 to 9-10** and let a 0%-unlock account
+  /// win the campaign. Swept nine growth values from 1.34 to 1.54 and there is
+  /// no curve that takes it back: steepening shifts all three gates together,
+  /// and what the buff did was **close the gap** between 0% and 100% unlocks
+  /// from +6 stages to +2.
+  ///
+  /// The uncomfortable conclusion: **a weak opening pool is load-bearing.**
+  /// Part of what makes a 0%-unlock player weak is that their twelve cards
+  /// include duds, and making every starter card generically good removes the
+  /// reason to unlock anything. "No wasted picks" and "the shop must matter"
+  /// are in direct conflict as long as the fix is *general* strength.
+  ///
+  /// The way out is **situational** strength: a card that is the right pick in
+  /// a specific spot and mediocre on average removes the wasted pick without
+  /// raising the floor. That is two new effects and a re-measure, not a tuning
+  /// pass, and it is scoped as docs/08 C5.
+  ///
   /// [freeDryPlacement] whether Temple's once-per-stage grace is still unused.
   TurnModifiers turnModifiers({
     int rows = 0,
@@ -405,7 +453,7 @@ class Milestones {
   bool satisfies(String unlock) => switch (unlock) {
     'initial' => true,
     'own 4 tier-3 motifs' => tier3Owned >= 4,
-    'own 8 motifs' => motifsOwned >= 8,
+    'own 10 motifs' => motifsOwned >= 10,
     'clear stage 4' => bestStage >= 4,
     'clear stage 5' => bestStage >= 5,
     'clear stage 6' => bestStage >= 6,
@@ -414,6 +462,10 @@ class Milestones {
     'clear stage 9' => bestStage >= 9,
     'clear stage 10' => bestStage >= 10,
     'reach rhythm x3.0' => bestRhythm >= 3.0,
+    // No card uses this since Double Pick was re-gated onto "clear stage 7"
+    // (docs/05 §8) — a rare behind something that can happen by luck on run 1.
+    // Kept because the controller still records it and it is the natural gate
+    // for a future line-stacker card.
     'clear 3 lines at once' => clearedThreeAtOnce,
     'lose a run to a broken rhythm' => lostToBrokenRhythm,
     'jam a run' => jammed,
@@ -422,6 +474,32 @@ class Milestones {
     // An unrecognised milestone must never silently unlock a card.
     _ => false,
   };
+
+  Map<String, dynamic> toJson() => {
+    'tier3Owned': tier3Owned,
+    'motifsOwned': motifsOwned,
+    'bestStage': bestStage,
+    'bestRhythm': bestRhythm,
+    'runsFinished': runsFinished,
+    'clearedThreeAtOnce': clearedThreeAtOnce,
+    'lostToBrokenRhythm': lostToBrokenRhythm,
+    'jammed': jammed,
+    'spoolsBanked': spoolsBanked,
+  };
+
+  /// Tolerant field by field, like the account's own loader: a save written by
+  /// an older build must not cost a player their unlocks.
+  static Milestones fromJson(Map<String, dynamic> j) => Milestones(
+    tier3Owned: (j['tier3Owned'] as num?)?.toInt() ?? 0,
+    motifsOwned: (j['motifsOwned'] as num?)?.toInt() ?? 0,
+    bestStage: (j['bestStage'] as num?)?.toInt() ?? 0,
+    bestRhythm: (j['bestRhythm'] as num?)?.toDouble() ?? 1.0,
+    runsFinished: (j['runsFinished'] as num?)?.toInt() ?? 0,
+    clearedThreeAtOnce: (j['clearedThreeAtOnce'] as bool?) ?? false,
+    lostToBrokenRhythm: (j['lostToBrokenRhythm'] as bool?) ?? false,
+    jammed: (j['jammed'] as bool?) ?? false,
+    spoolsBanked: (j['spoolsBanked'] as num?)?.toInt() ?? 0,
+  );
 
   Milestones copyWith({
     int? tier3Owned,

@@ -16,13 +16,13 @@ void main() {
   test('loads every tuning file from the asset bundle', () async {
     final t = await Tuning.load();
 
-    expect(t.curve.baseTarget, 100);
+    expect(t.curve.baseTarget, 80);
     expect(t.curve.stages, 12);
     expect(t.curve.scoring.lineBonusTable, const [0, 10, 25, 45, 70, 100]);
     expect(t.economy.payout.forStages(5), 125);
-    expect(t.economy.shapeCosts[2], hasLength(6));
-    expect(t.economy.upgrades, hasLength(9));
-    expect(t.powers.defs, hasLength(33));
+    expect(t.economy.shapeCosts[2], hasLength(5));
+    expect(t.economy.upgrades, hasLength(11));
+    expect(t.powers.defs, hasLength(34));
     expect(t.powers.offerCount, 3);
     expect(t.powers.weights, hasLength(3));
     expect(t.faults.all, hasLength(9));

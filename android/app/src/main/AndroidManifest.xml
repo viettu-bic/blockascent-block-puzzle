@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- HapticFeedback.vibrate() drives the system Vibrator, which silently
+         does nothing without this. Without it the combo-break buzz, the line
+         clear and the end of a run were all felt as nothing at all; the only
+         feedback that survived was the *Impact family, whose strength is up to
+         the OEM. See lib/platform/haptics.dart. -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
     <application
         android:label="Blockascent"
         android:name="${applicationName}"

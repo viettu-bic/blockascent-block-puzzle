@@ -59,6 +59,8 @@
 	     thumb dragging upward out of the tray - assumes one orientation
 	     (spec 8), and declaring landscape here produces a rotation flash
 	     before the runtime lock in lockPortrait() takes effect. -->
+	<key>UIUserInterfaceStyle</key>
+	<string>Dark</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

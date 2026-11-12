@@ -50,8 +50,6 @@ void main() {
     spools: 0,
     ownedShapeIds: {for (final s in allShapes) s.id},
     upgrades: {
-      'classicMode',
-      'dailyChallenge',
       'loadoutSlot9',
       'openingRhythm',
       'openingAllowance',
@@ -64,6 +62,11 @@ void main() {
       // Nine motifs, small-biased: liquidity beats raw size before powers.
       'dot', 'i2', 'i3', 'o2', 'l3', 'i4', 't4', 'l4', 'j4',
     ],
+    // "Everything" includes the fault ladder: faults unlock by tier within
+    // their act, so an account that has not cleared any would only ever be
+    // offered tier 1 and the 100% gate would be measuring a narrower game
+    // than it claims.
+    faultsCleared: {for (final f in tuning.faults.all) f.id},
     milestones: const Milestones(
       tier3Owned: 6,
       motifsOwned: 22,
@@ -75,7 +78,7 @@ void main() {
       jammed: true,
       spoolsBanked: 9000,
     ),
-  )..upgrades.remove('classicMode'); // rotation stays on for the auto-player
+  );
 
   /// Drive the controller with the greedy player until the run ends.
   ///
@@ -121,15 +124,83 @@ void main() {
   }
 
   group('starting a run', () {
-    test('opens by announcing act 1 three faults, not by placing', () {
+    test('opens by announcing act 1 faults, not by placing', () {
       // The act's options are announced when the act begins, so the player can
       // draft toward the one they chose.
       final t = build();
       t.c.begin();
       expect(t.c.phase, GamePhase.faultChoice);
-      expect(t.c.faultOptions, hasLength(3));
+      expect(t.c.faultOptions, isNotEmpty);
       expect(t.c.faultOptions.map((f) => f.act).toSet(), {1});
       expect(t.c.tray.every((s) => s == null), isTrue);
+    });
+
+    test('a fresh account sees all three faults, but can only pick one', () {
+      // All three are *shown*: a ladder the player cannot see is not a ladder,
+      // and a locked row tells them what they are working toward. Only the
+      // unlocked one is selectable (docs/06 §6a).
+      final t = build();
+      t.c.begin();
+      expect(t.c.faultOptions, hasLength(3));
+      expect(t.c.lockedFaultIds, hasLength(2));
+      expect(
+        t.c.faultOptions.where((f) => !t.c.lockedFaultIds.contains(f.id)).single.tier,
+        1,
+      );
+      // And the hint names what unlocks each locked one.
+      final tier2 = t.c.faultOptions.firstWhere((f) => f.tier == 2);
+      expect(t.c.unlockedBy(tier2.id)?.tier, 1);
+      expect(t.c.unlockedBy(t.c.faultOptions.first.id), isNull);
+    });
+
+    test('a locked fault cannot be chosen, even if something taps it', () {
+      final t = build();
+      t.c.begin();
+      final locked = t.c.lockedFaultIds.first;
+      t.c.chooseFault(locked);
+      expect(t.c.phase, GamePhase.faultChoice, reason: 'refused, not accepted');
+      expect(t.c.chosenFaultByAct, isEmpty);
+    });
+
+    test('clearing a fault unlocks the next tier, and only the next', () {
+      // All three are always shown; what changes is which are locked.
+      final a = Account(faultsCleared: {'thin_place'});
+      final t = build(account: a);
+      t.c.begin();
+      expect(t.c.faultOptions, hasLength(3));
+      expect(t.c.lockedFaultIds.length, 1);
+      expect(
+        t.c.faultOptions.where((f) => !t.c.lockedFaultIds.contains(f.id))
+            .map((f) => f.tier),
+        [1, 2],
+      );
+
+      final b = Account(faultsCleared: {'thin_place', 'reediness'});
+      final u = build(account: b);
+      u.c.begin();
+      expect(u.c.lockedFaultIds, isEmpty);
+
+      // Clearing act 2's tier 1 does nothing for act 1, and vice versa: the
+      // ladder is per act, so progress cannot leak sideways.
+      final c = Account(faultsCleared: {'fixed_heddles'});
+      final v = build(account: c);
+      v.c.begin();
+      expect(v.c.lockedFaultIds, hasLength(2));
+    });
+
+    test('clearing the fault stage banks it on the account', () {
+      final t = build(account: maxedAccount()..faultsCleared.clear());
+      t.c.begin();
+      t.c.chooseFault(t.c.faultOptions.first.id);
+      playOut(t.c);
+      // A run that reached stage 4 and cleared it has beaten one fault; a run
+      // that died before stage 4 has beaten none. Either is fine — what must
+      // not happen is banking a fault the player never cleared.
+      if (t.c.stagesCleared >= 4) {
+        expect(t.a.faultsCleared, contains('thin_place'));
+      } else {
+        expect(t.a.faultsCleared, isEmpty);
+      }
     });
 
     test('choosing the fault starts stage 1 with a full tray', () {
@@ -169,9 +240,13 @@ void main() {
       final t = build(account: a);
       t.c.begin();
       t.c.chooseFault('thin_place');
-      expect(t.c.ladder.score.multiplier, 1.2);
-      expect(t.c.ladder.score.shields, 1);
-      expect(t.c.ladder.placementsLeft, allowanceFor(tuning.curve, 1) + 2);
+      // Rebuilt 2026-11-12 (docs/04 §9): the opening upgrades were small flat
+      // numbers and are now structural. Combo Floor holds x2.0 at **every**
+      // stage, Shields gives three refilled every stage, and Extra Moves is
+      // +5 on every stage rather than +2 on the first.
+      expect(t.c.ladder.score.multiplier, 2.0);
+      expect(t.c.ladder.score.shields, 3);
+      expect(t.c.ladder.placementsLeft, allowanceFor(tuning.curve, 1) + 5);
     });
 
     test('a fresh account plays with the five free motifs', () {
@@ -265,10 +340,27 @@ void main() {
       final cells = cellsOf(item.shapeId, item.rotation);
       final s = shape(item.shapeId);
       t.c.place(slot, const Anchor(0, 0));
-      // Nothing cleared on an empty board, so the gain is cells x value x 1.0.
-      expect(t.c.ladder.stageScore, s.cellCount);
-      expect(t.c.ladder.score.total, s.cellCount);
+      // **Zero.** Nothing cleared, and placing a block scores nothing on its
+      // own as of 2026-11-12 — points come from clearing a row or a column.
+      expect(t.c.ladder.stageScore, 0);
+      expect(t.c.ladder.score.total, 0);
       expect(cells, hasLength(s.cellCount));
+
+      // With a yarn bought it pays its cells, which is what the whole family
+      // now sells: placement income, band by band (docs/05 §10).
+      final paid = build(account: Account(upgrades: {'standardYarn'}));
+      paid.c.begin();
+      paid.c.chooseFault('thin_place');
+      final mid = paid.c.tray.firstWhere(
+        (i) => i != null && shape(i.shapeId).cellCount >= 3,
+      )!;
+      final midSlot = paid.c.tray.indexOf(mid);
+      paid.c.place(midSlot, const Anchor(0, 0));
+      expect(
+        paid.c.ladder.score.total,
+        shape(mid.shapeId).cellCount * 3,
+        reason: 'Mid Block Bonus is +3 a cell',
+      );
     });
 
     test('autosaves after every placement', () {
@@ -284,7 +376,9 @@ void main() {
 
   group('stage boundaries', () {
     test('clearing a stage offers a draft, and taking one advances', () async {
-      final t = build();
+      // Owns a yarn, because placing a block scores nothing without one now
+      // and stage 1 on line bonus alone is not a given (docs/05 §10).
+      final t = build(account: Account(upgrades: {'standardYarn'}));
       t.c.begin();
       t.c.chooseFault('thin_place');
       // Walk the ladder to the first stage clear.
@@ -439,7 +533,12 @@ void main() {
       expect(t.c.activeFault, isNull, reason: 'stage 5 is not a fault stage');
       expect(t.c.faultEffects, FaultEffects.none);
       expect(t.c.ladder.target, targetFor(tuning.curve, 5));
-      expect(t.c.ladder.placementsLeft, allowanceFor(tuning.curve, 5));
+      // `maxedAccount` owns Extra Moves, which is +5 on every stage now, so
+      // the assertion is "no fault scaling", not "the bare curve".
+      expect(
+        t.c.ladder.placementsLeft,
+        allowanceFor(tuning.curve, 5) + t.a.openingAllowanceBonus,
+      );
     });
 
     test('a fault stage recomputes its own target and allowance', () {
@@ -564,15 +663,18 @@ void main() {
       final t = build();
       t.c.begin();
       t.c.chooseFault('thin_place');
-      expect(t.c.bagLoadout.map((s) => s.id), contains('dot'));
+      // `l3`, not `dot`: the roster inverted and `dot` is the single most
+      // expensive purchase in the game now, so a fresh account does not have
+      // it (lib/core/shapes.dart).
+      expect(t.c.bagLoadout.map((s) => s.id), contains('l3'));
 
       _parkOnDraft(t.c, 'cull');
       t.c.takeDraftCard(t.c.draftOptions.first);
       expect(t.c.phase, GamePhase.motifChoice);
-      t.c.chooseMotifForCard('dot');
+      t.c.chooseMotifForCard('l3');
 
-      expect(t.c.bagLoadout.map((s) => s.id), isNot(contains('dot')));
-      expect(t.c.account.loadout, contains('dot'),
+      expect(t.c.bagLoadout.map((s) => s.id), isNot(contains('l3')));
+      expect(t.c.account.loadout, contains('l3'),
           reason: 'the account is untouched — Cull is for this run only');
     });
 
@@ -582,22 +684,129 @@ void main() {
       t.c.chooseFault('thin_place');
       _parkOnDraft(t.c, 'cull');
       t.c.takeDraftCard(t.c.draftOptions.first);
-      t.c.chooseMotifForCard('dot');
+      t.c.chooseMotifForCard('l3');
 
       _parkOnDraft(t.c, 'favour');
       t.c.takeDraftCard(t.c.draftOptions.first);
-      expect(() => t.c.chooseMotifForCard('dot'), returnsNormally);
-      expect(t.c.bagLoadout.map((s) => s.id), isNot(contains('dot')));
+      expect(() => t.c.chooseMotifForCard('l3'), returnsNormally);
+      expect(t.c.bagLoadout.map((s) => s.id), isNot(contains('l3')));
     });
 
     test('Cull never empties the bag', () {
-      final t = build(account: Account(loadout: ['dot']));
+      final t = build(account: Account(loadout: ['l3']));
       t.c.begin();
       t.c.chooseFault('thin_place');
       _parkOnDraft(t.c, 'cull');
       t.c.takeDraftCard(t.c.draftOptions.first);
-      t.c.chooseMotifForCard('dot');
+      t.c.chooseMotifForCard('l3');
       expect(t.c.bagLoadout, isNotEmpty);
+    });
+  });
+
+  group('the draft pool is fixed when the run starts', () {
+    /// Drive a run, collecting every card id the draft ever offered.
+    List<String> offeredDuring(RunController c) {
+      final offered = <String>[];
+      for (var i = 0; i < 20000; i++) {
+        switch (c.phase) {
+          case GamePhase.faultChoice:
+            c.chooseFault(c.faultOptions.first.id);
+          case GamePhase.draft:
+            offered.addAll(c.draftOptions.map((d) => d.id));
+            if (c.draftOptions.isEmpty) {
+              c.skipDraft();
+            } else {
+              c.takeDraftCard(c.draftOptions.first);
+            }
+          case GamePhase.motifChoice:
+            c.chooseMotifForCard(c.bagLoadout.first.id);
+          case GamePhase.placing:
+            final move = bestMove(
+              c.board,
+              [...c.tray, if (c.powers.hasHold) c.holdItem],
+              allowRotation: !c.rotationDisabled,
+            );
+            if (move == null) fail('greedy stuck while placing');
+            _rotateTo(c, move.slot, move.rotation);
+            c.place(move.slot, Anchor(move.ax, move.ay));
+          case GamePhase.lost:
+          case GamePhase.won:
+            return offered;
+        }
+      }
+      fail('run did not terminate');
+    }
+
+    test('a milestone earned mid-run does not widen that run', () {
+      // Reading `account.milestones` live meant clearing stage 7 put Second
+      // Shuttle into the very next draft of the run that earned it. Measured,
+      // a 0%-unlock account was drafting Treadle Rhythm, Batten and Second
+      // Shuttle — so "0% unlocks", the gate the whole shop rests on, did not
+      // mean the initial twelve at all.
+      //
+      // It is also a snowball: the strongest cards arrive exactly when the
+      // player is already winning. A run's pool should be knowable at its
+      // start, which is the same argument docs/06 §6 makes for faults.
+      final t = build(account: Account(upgrades: {'standardYarn'}));
+      final atStart = t.a.milestones;
+      expect(atStart.bestStage, 0, reason: 'a fresh account');
+
+      t.c.begin();
+      final offered = offeredDuring(t.c).toSet();
+      expect(offered, isNotEmpty);
+
+      for (final id in offered) {
+        final def = tuning.powers.byId(id);
+        expect(
+          atStart.satisfies(def.unlock),
+          isTrue,
+          reason: '$id was offered but needs "${def.unlock}", '
+              'which this account had not met when the run began',
+        );
+      }
+
+      // ...and the milestones it earned are still banked, for next time.
+      expect(
+        t.a.milestones.bestStage,
+        greaterThan(atStart.bestStage),
+        reason: 'the run still records what it achieved',
+      );
+    });
+
+    test('the snapshot survives a save and restore', () async {
+      // Re-reading the account on restore would hand a resumed run every
+      // milestone earned since it started — the same bug, through the back
+      // door, and only reachable by backgrounding the app mid-run.
+      final t = build(seed: 31);
+      t.c.begin();
+      t.c.chooseFault(t.c.faultOptions.first.id);
+      while (t.c.phase == GamePhase.placing) {
+        final move = bestMove(t.c.board, t.c.tray);
+        if (move == null) break;
+        _rotateTo(t.c, move.slot, move.rotation);
+        t.c.place(move.slot, Anchor(move.ax, move.ay));
+      }
+
+      // Something else raises the account's milestones while the run is parked.
+      t.a.milestones = t.a.milestones.copyWith(bestStage: 12, bestRhythm: 4);
+
+      final restored = RunController(
+        tuning: tuning,
+        account: t.a,
+        storage: t.s,
+        haptics: silentHaptics(),
+      );
+      await restored.restore();
+
+      final offered = offeredDuring(restored).toSet();
+      for (final id in offered) {
+        final def = tuning.powers.byId(id);
+        expect(
+          def.isInitial,
+          isTrue,
+          reason: '$id was offered to a resumed run that began with nothing',
+        );
+      }
     });
   });
 
@@ -648,13 +857,20 @@ void main() {
       );
 
       // And the second finished run of the same day does not get it again.
+      // Asserted against the run's own payout rather than a constant, because
+      // how deep the greedy player gets moves with every tuning change.
       final before = t.a.spools;
       t.c.begin();
       expect(t.c.firstRunOfDay, isFalse);
       playOut(t.c);
       expect(
         t.a.spools - before,
-        lessThan(tuning.economy.payout.firstRunOfDayBonus),
+        tuning.economy.payout.forRun(
+          stagesCleared: t.c.stagesCleared,
+          finalStage: tuning.curve.stages,
+          won: t.c.phase == GamePhase.won,
+        ),
+        reason: 'the second run of a day is paid its stages and nothing more',
       );
     });
 
@@ -927,7 +1143,13 @@ void main() {
 
       final restored = RunController(
         tuning: tuning,
-        account: t.a,
+        // A *snapshot* of the account, not the same object. The two runs below
+        // both play to the end, and a shared Account would let the first one's
+        // milestones widen the second one's draft pool mid-comparison - so the
+        // two would diverge for a reason that has nothing to do with the RNG,
+        // which is what this test is about. Going through JSON is also what a
+        // real app restart does.
+        account: Account.fromJson(t.a.toJson()),
         storage: t.s,
         haptics: silentHaptics(),
       );

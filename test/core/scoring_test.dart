@@ -55,10 +55,12 @@ void main() {
     });
 
     test('spends patience on a dry placement but keeps the multiplier', () {
+      // Starts at FULL patience, so what is measured is "spends one" rather
+      // than "happens to have two left". Base patience is 3 since 2026-11-11.
       const s = ScoreState(
         total: 0,
         multiplier: 2,
-        patience: 2,
+        patience: 3,
         shields: 0,
       );
       final out = scoreTurn(s, 3, 0);

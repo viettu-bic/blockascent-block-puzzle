@@ -9,8 +9,8 @@
 ///
 /// [shouldRepaint] compares an immutable [BoardView] snapshot and returns
 /// false when nothing changed. The board is static between placements, and an
-/// idle board must burn no GPU. The static chrome — the loom frame and its
-/// warp lines — is pre-recorded into a `ui.Picture` and replayed with
+/// idle board must burn no GPU. The static chrome — the frame, the chart grid
+/// and the empty cells — is pre-recorded into a `ui.Picture` and replayed with
 /// `drawPicture`, so it costs one draw call however complex it gets.
 library;
 
@@ -23,7 +23,7 @@ import '../core/shapes.dart';
 import '../core/types.dart';
 import 'layout.dart';
 import 'theme.dart';
-import 'weave.dart';
+import 'starfield.dart';
 
 /// How the ghost reads. Each state must be distinguishable **without relying
 /// on colour alone** (spec §7.5), so each also carries a shape cue: a plain
@@ -32,10 +32,7 @@ enum GhostState { none, valid, willClear, invalid }
 
 /// A line being cleared, mid-animation.
 class ClearAnimation {
-  const ClearAnimation({
-    required this.clears,
-    required this.t,
-  });
+  const ClearAnimation({required this.clears, required this.t});
 
   final Clears clears;
 
@@ -63,7 +60,6 @@ class BoardView {
     this.clearAnimation,
     this.settleT = 1.0,
     this.settleCells = const [],
-    this.weavePaint,
     this.rotationDisabled = false,
     this.toolTarget,
   });
@@ -96,10 +92,6 @@ class BoardView {
   /// longer filled were taken by a clear and are simply skipped.
   final List<Coord> settleCells;
 
-  /// Repeating weave fill for the still surfaces. Null until built, and null
-  /// forever if the device could not make one — the game must not depend on it.
-  final Paint? weavePaint;
-
   /// Fixed Heddles: shown as a struck-through rotation hint on tray pieces.
   final bool rotationDisabled;
 
@@ -123,7 +115,6 @@ class BoardView {
       other.clearAnimation?.clears == clearAnimation?.clears &&
       other.settleT == settleT &&
       other.settleCells.length == settleCells.length &&
-      other.weavePaint == weavePaint &&
       other.rotationDisabled == rotationDisabled &&
       other.toolTarget == toolTarget;
 
@@ -157,7 +148,7 @@ class BoardPainter extends CustomPainter {
 
   final BoardView view;
 
-  /// The loom frame, recorded once per layout size.
+  /// The frame and the sky behind it, recorded once per layout size.
   static ui.Picture? _chrome;
   static Size? _chromeSize;
   static LoomPalette? _chromePalette;
@@ -189,18 +180,33 @@ class BoardPainter extends CustomPainter {
       final recorder = ui.PictureRecorder();
       final c = Canvas(recorder);
 
-      c.drawRect(Offset.zero & size, Paint()..color = p.background);
+      // No background fill. The sky is one layer per *screen*, not one per
+      // canvas: `SkyBackground` paints it behind the whole game screen, and
+      // this canvas only covers the part below the HUD. Filling it here would
+      // put a second nebula and a second star field in the lower two thirds
+      // of the screen, with a seam across the middle where the two gradients
+      // met.
+      final canvasRect = Offset.zero & size;
 
-      // The loom frame: a recessed panel behind the board, plus warp lines in
-      // the margins where texture is allowed to read.
+      // The frame: a recessed panel behind the board.
       final frame = l.board.inflate(canvasMargin * 0.6);
       c.save();
-      c.clipRRect(
-        RRect.fromRectAndRadius(frame, Radius.circular(_radius * 2)),
-      );
+      c.clipRRect(RRect.fromRectAndRadius(frame, Radius.circular(_radius * 2)));
       c.drawRect(frame, Paint()..color = p.frame);
-      paintWarpLines(c, frame, line: p.weaveLine, spacing: 7);
       c.restore();
+
+      // The graticule, over the whole canvas and on the board's own pitch, so
+      // the rows and columns the game clears run on past the board and into
+      // the sky. It is drawn after the frame and before the cells, which means
+      // it survives only where nothing is placed on top of it — the margins
+      // and the sky — and that is exactly where structure is allowed to read.
+      paintChartGrid(
+        c,
+        canvasRect,
+        line: p.weaveLine,
+        spacing: l.cell,
+        origin: l.board.topLeft,
+      );
 
       // Empty cells. These never change, so they belong in the chrome rather
       // than in the per-frame pass.
@@ -228,10 +234,7 @@ class BoardPainter extends CustomPainter {
 
       // The tray trough.
       c.drawRRect(
-        RRect.fromRectAndRadius(
-          l.tray.deflate(6),
-          const Radius.circular(16),
-        ),
+        RRect.fromRectAndRadius(l.tray.deflate(6), const Radius.circular(16)),
         Paint()..color = p.boardBackground,
       );
 
@@ -254,7 +257,12 @@ class BoardPainter extends CustomPainter {
         if (isKnot(v)) {
           _paintKnot(canvas, l.cellRect(x, y));
         } else {
-          _paintYarnCell(canvas, l.cellRect(x, y), v, scale: _settleScale(x, y));
+          _paintYarnCell(
+            canvas,
+            l.cellRect(x, y),
+            v,
+            scale: _settleScale(x, y),
+          );
         }
       }
     }
@@ -293,8 +301,11 @@ class BoardPainter extends CustomPainter {
       RRect.fromRectAndRadius(rect, Radius.circular(_radius)),
       Paint()..color = colour.withValues(alpha: alpha),
     );
-    // A single top-left highlight reads as a thread catching the light and
+    // A single top-left highlight reads as a face catching the light and
     // gives the flat colour a direction, at one extra draw call per cell.
+    // It is the only shading a cell gets: everything else about the sky
+    // stays outside the board, because a 42px cell is flat colour or it is
+    // nothing (docs/03 §4).
     canvas.drawRRect(
       RRect.fromRectAndRadius(
         Rect.fromLTWH(rect.left, rect.top, rect.width, rect.height * 0.34),
@@ -304,21 +315,32 @@ class BoardPainter extends CustomPainter {
     );
   }
 
-  /// A knot reads as a knot, not as yarn: no highlight, a muted colour, and a
-  /// crossed slub drawn through it so it is legible without relying on hue.
+  /// A blocker reads as a blocker, not as a block: no highlight, a muted
+  /// colour, and a ring drawn on it so it is legible without relying on hue.
+  ///
+  /// The ring is a dark nebula — a patch of sky with nothing behind it. It
+  /// replaced a drawn cross with the theme, and the two rules it has to keep
+  /// are unchanged: no hue-only encoding (spec §7.5), and `knotMark` against
+  /// `knot` at 3:1, which `test/render/palette_test.dart` measures.
   void _paintKnot(Canvas canvas, Rect r) {
     final rect = r.deflate(1.5);
     canvas.drawRRect(
       RRect.fromRectAndRadius(rect, Radius.circular(_radius)),
       Paint()..color = p.knot,
     );
-    final stroke = Paint()
-      ..color = p.knotMark
-      ..strokeWidth = l.cell * 0.10
-      ..strokeCap = StrokeCap.round;
-    final inset = rect.deflate(rect.width * 0.26);
-    canvas.drawLine(inset.topLeft, inset.bottomRight, stroke);
-    canvas.drawLine(inset.topRight, inset.bottomLeft, stroke);
+    canvas.drawCircle(
+      rect.center,
+      rect.width * 0.29,
+      Paint()
+        ..color = p.knotMark
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = l.cell * 0.09,
+    );
+    canvas.drawCircle(
+      rect.center,
+      rect.width * 0.085,
+      Paint()..color = p.knotMark,
+    );
   }
 
   /* ---------------- preview, ghost, clear ---------------- */
@@ -498,8 +520,12 @@ class BoardPainter extends CustomPainter {
     final oy = inner.center.dy - h / 2;
 
     for (final (cx, cy) in cells) {
-      final r = Rect.fromLTWH(ox + cx * unit, oy + cy * unit, unit, unit)
-          .deflate(unit * 0.06);
+      final r = Rect.fromLTWH(
+        ox + cx * unit,
+        oy + cy * unit,
+        unit,
+        unit,
+      ).deflate(unit * 0.06);
       canvas.drawRRect(
         RRect.fromRectAndRadius(r, Radius.circular(unit * 0.18)),
         Paint()..color = p.yarnFor(s.cellCount),
@@ -567,20 +593,17 @@ class BoardPainter extends CustomPainter {
         l.cell,
       ).deflate(1.5);
       canvas.drawRRect(
-        RRect.fromRectAndRadius(r.shift(const Offset(0, 4)),
-            Radius.circular(_radius)),
+        RRect.fromRectAndRadius(
+          r.shift(const Offset(0, 4)),
+          Radius.circular(_radius),
+        ),
         shadow,
       );
     }
     for (final (cx, cy) in cells) {
       _paintYarnCell(
         canvas,
-        Rect.fromLTWH(
-          left + cx * l.cell,
-          top + cy * l.cell,
-          l.cell,
-          l.cell,
-        ),
+        Rect.fromLTWH(left + cx * l.cell, top + cy * l.cell, l.cell, l.cell),
         s.cellCount,
       );
     }

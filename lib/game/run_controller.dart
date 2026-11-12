@@ -24,6 +24,7 @@ import '../core/shapes.dart';
 import '../core/types.dart';
 import '../data/tuning.dart';
 import '../platform/haptics.dart';
+import '../platform/sfx.dart';
 import '../platform/storage.dart';
 import 'account.dart';
 
@@ -63,13 +64,20 @@ class RunController extends ChangeNotifier {
     required this.account,
     required this.storage,
     required this.haptics,
+    Sfx? sfx,
     int Function()? seedSource,
-  }) : _seedSource = seedSource ?? randomSeed;
+  })  : sfx = sfx ?? Sfx(enabled: false),
+        _seedSource = seedSource ?? randomSeed;
 
   final Tuning tuning;
   final Account account;
   final Storage storage;
   final Haptics haptics;
+
+  /// Defaults to a **silent** instance, so a test or a tool that does not pass
+  /// one never constructs an `AudioPlayer` and never reaches a platform
+  /// channel (see `Sfx`).
+  final Sfx sfx;
   final int Function() _seedSource;
 
   /* ---------------- run state ---------------- */
@@ -93,7 +101,17 @@ class RunController extends ChangeNotifier {
   FaultEffects faultEffects = FaultEffects.none;
   FaultDef? activeFault;
 
+  /// **All** of the act's faults, including the ones that cannot be chosen
+  /// yet — those are in [lockedFaultIds].
+  ///
+  /// They used to be filtered out entirely, so a player had no idea the harder
+  /// ones existed. Showing a locked option greyed out is the whole point of
+  /// having a ladder: it is a thing to work toward rather than a surprise two
+  /// runs later (docs/06 §6a).
   List<FaultDef> faultOptions = [];
+
+  /// Fault ids shown but not selectable.
+  Set<String> lockedFaultIds = {};
   List<PowerDef> draftOptions = [];
   PowerDef? pendingMotifCard;
 
@@ -101,11 +119,34 @@ class RunController extends ChangeNotifier {
   int battenCharges = 0;
   ToolAim aiming = ToolAim.none;
 
-  bool _templeSpentThisStage = false;
+
   int _placementsThisStage = 0;
   int _stagesCleared = 0;
   int _spoolsEarned = 0;
+  bool _templeSpentThisStage = false;
   bool _firstRunOfDay = false;
+
+  /// The milestones the **draft pool** is built from, snapshotted at
+  /// [begin] and held for the whole run.
+  ///
+  /// Reading `account.milestones` live made milestone cards unlock *mid-run*:
+  /// clearing stage 7 put Second Shuttle into the very next draft of the run
+  /// that earned it. Measured, a 0%-unlock account was drafting Treadle
+  /// Rhythm, Batten and Second Shuttle — so "0% unlocks" did not mean the
+  /// initial twelve, it meant most of the pool as soon as a run went deep.
+  ///
+  /// Two reasons that is wrong, and the second is the design one:
+  ///
+  /// - It is a snowball. The strongest cards arrive exactly when the player is
+  ///   already winning, which widens the gap a run is meant to close.
+  /// - A run's pool should be knowable at the start. docs/06 §6 makes this
+  ///   argument for faults — a constraint you can see four stages out is
+  ///   something you draft toward, one sprung on you is something that happens
+  ///   to you — and a card pool is the same claim about the same player.
+  ///
+  /// Milestones earned during a run are still recorded on the account; they
+  /// simply take effect from the **next** run.
+  late Milestones _poolMilestones;
   final List<RunEvent> log = [];
 
   /// The lines the last placement cleared, and a counter that changes on
@@ -143,7 +184,8 @@ class RunController extends ChangeNotifier {
 
   /* ---------------- derived ---------------- */
 
-  int get slotCount => baseTraySlots + powers.extraTraySlots;
+  int get slotCount =>
+      baseTraySlots + powers.extraTraySlots + account.extraTraySlots;
 
   int get boardSize => faultEffects.boardSize ?? defaultSize;
 
@@ -156,8 +198,8 @@ class RunController extends ChangeNotifier {
     final p = powers.ladderModifiers;
     final f = faultEffects.ladderModifiers;
     return LadderModifiers(
-      allowanceBonus:
-          p.allowanceBonus + (ladder.stage == 1 ? account.openingAllowanceBonus : 0),
+      // Every stage, not just the first: see Account.openingAllowanceBonus.
+      allowanceBonus: p.allowanceBonus + account.openingAllowanceBonus,
       allowanceScale: f.allowanceScale,
       targetScale: p.targetScale * f.targetScale,
     );
@@ -203,6 +245,9 @@ class RunController extends ChangeNotifier {
     pendingMotifCard = null;
     log.clear();
 
+    // The draft pool is fixed for the whole run: see [_poolMilestones].
+    _poolMilestones = account.milestones;
+
     // The daily bonus is *earned by finishing*, not by starting. Writing
     // `lastPlayedDay` here meant an abandoned or restarted run spent the
     // bonus before a single placement, so the run the player thought was
@@ -230,21 +275,55 @@ class RunController extends ChangeNotifier {
     );
   }
 
-  /// Announce the act's three faults. The player picks one now and it lands on
-  /// the act's last stage, so there is time to draft toward it.
+  /// Announce the act's **unlocked** faults. The player picks one now and it
+  /// lands on the act's last stage, so there is time to draft toward it.
+  ///
+  /// A fresh account sees only tier 1; clearing it opens tier 2, and so on
+  /// ([unlockedFaults]). So this is one option on a first run and grows to
+  /// three — which is why nothing here may assume a length of 3.
   void _offerFaultsForAct(int act) {
     final a = tuning.faults.acts.firstWhere(
       (x) => x.act == act,
       orElse: () => tuning.faults.acts.last,
     );
+    final unlocked =
+        unlockedFaults(a, account.faultsCleared).map((f) => f.id).toSet();
     faultOptions = a.faults;
+    lockedFaultIds = {
+      for (final f in a.faults)
+        if (!unlocked.contains(f.id)) f.id,
+    };
     phase = GamePhase.faultChoice;
   }
 
+  /// Bank the fault just beaten, which is what opens the next tier.
+  ///
+  /// Called from both the stage-clear and the win paths: stage 12 *is* an act-3
+  /// fault stage, so a winning run would otherwise never record the hardest
+  /// fault it cleared.
+  void _recordFaultCleared() {
+    final id = activeFault?.id;
+    if (id != null) account.faultsCleared.add(id);
+  }
+
+  /// The fault that has to be cleared before [id] can be chosen, or null when
+  /// [id] is already available.
+  FaultDef? unlockedBy(String id) {
+    final a = tuning.faults.acts.firstWhere(
+      (x) => x.faults.any((f) => f.id == id),
+      orElse: () => tuning.faults.acts.first,
+    );
+    return faultUnlockedBy(a, id);
+  }
+
   void chooseFault(String faultId) {
+    // A locked option is shown, so it can be tapped — refuse it here rather
+    // than trusting the overlay to disable it.
+    if (lockedFaultIds.contains(faultId)) return;
     final act = actOf(ladder.stage);
     chosenFaultByAct[act] = faultId;
     faultOptions = [];
+    lockedFaultIds = {};
     phase = GamePhase.placing;
     _beginStage();
     notifyListeners();
@@ -300,7 +379,8 @@ class RunController extends ChangeNotifier {
     // Tool charges refresh per stage; Batten is per run and is set at pick
     // time instead.
     for (final id in ['unpick', 'rethread', 'shears', 'resley']) {
-      final n = powers.chargesPerStage(id);
+      final n = powers.chargesPerStage(id) +
+          (account.toolChargesPerStage[id] ?? 0);
       if (n > 0) toolCharges[id] = n;
     }
 
@@ -309,6 +389,17 @@ class RunController extends ChangeNotifier {
     if (refillShields > ladder.score.shields) {
       ladder = ladder.copyWith(
         score: ladder.score.copyWith(shields: refillShields),
+      );
+    }
+
+    // Combo Floor: every stage opens at the bought multiplier or better, so a
+    // break does not follow the player across a stage boundary. Carried here
+    // rather than only into `startRun`, which is what makes it a change to how
+    // a run feels instead of a one-off number (Account.openingMultiplier).
+    final floor = account.openingMultiplier;
+    if (floor != null && ladder.score.multiplier < floor) {
+      ladder = ladder.copyWith(
+        score: ladder.score.copyWith(multiplier: floor),
       );
     }
 
@@ -339,7 +430,8 @@ class RunController extends ChangeNotifier {
     // Small Hands: every refill contains at least one motif of 3 cells or
     // fewer. Swaps the largest for a small one rather than redrawing, so the
     // guarantee costs no extra RNG draws and stays replayable.
-    if (powers.guaranteesSmallMotif && !drawn.any((s) => s.cellCount <= 3)) {
+    if ((powers.guaranteesSmallMotif || account.guaranteesSmallMotif) &&
+        !drawn.any((s) => s.cellCount <= 3)) {
       final small = _bag.drawWhere((s) => s.cellCount <= 3);
       if (small != null) {
         var worst = 0;
@@ -399,12 +491,14 @@ class RunController extends ChangeNotifier {
   void rotate(int slot) {
     if (rotationDisabled) {
       haptics.invalid();
+      sfx.invalid();
       return;
     }
     final item = _itemAt(slot);
     if (item == null) return;
     _setItem(slot, item.withRotation(nextRotation(item.shapeId, item.rotation)));
     haptics.snap();
+    sfx.snap();
     notifyListeners();
   }
 
@@ -428,6 +522,7 @@ class RunController extends ChangeNotifier {
     final cells = cellsOf(item.shapeId, item.rotation);
     if (!fits(board, cells, a.x, a.y)) {
       haptics.invalid();
+      sfx.invalid();
       return false;
     }
 
@@ -470,10 +565,15 @@ class RunController extends ChangeNotifier {
 
     if (result.lines > 0) {
       haptics.lineClear();
+      sfx.lineClear(result.lines);
     } else {
       haptics.place();
+      sfx.place();
     }
-    if (outcome.broke) haptics.multiplierBreak();
+    if (outcome.broke) {
+      haptics.multiplierBreak();
+      sfx.multiplierBreak();
+    }
 
     if (outcome.won) {
       _onWin();
@@ -519,10 +619,12 @@ class RunController extends ChangeNotifier {
 
   void _onStageCleared() {
     _stagesCleared++;
+    _recordFaultCleared();
     log.add(
       RunEvent(ladder.stage, 'Level ${ladder.stage} complete'),
     );
     haptics.stageClear();
+    sfx.stageClear();
     if (ladder.score.multiplier > account.milestones.bestRhythm) {
       account.milestones = account.milestones.copyWith(
         bestRhythm: ladder.score.multiplier,
@@ -539,7 +641,7 @@ class RunController extends ChangeNotifier {
     draftOptions = offerDraft(
       tuning.powers,
       powers,
-      account.milestones,
+      _poolMilestones,
       _stagesCleared,
       _rng,
       reward: reward,
@@ -689,6 +791,7 @@ class RunController extends ChangeNotifier {
     }
     aiming = ToolAim.none;
     haptics.place();
+    sfx.place();
     // A tool can open the board back up, so the jam check has to run again —
     // and a tool that clears a line deliberately does **not** score, because
     // a scoring tool would be a second, cheaper source of rhythm.
@@ -709,6 +812,7 @@ class RunController extends ChangeNotifier {
     tray = List<TrayItem?>.filled(slotCount, null);
     _refill();
     haptics.snap();
+    sfx.snap();
     _checkJam();
     notifyListeners();
     _save();
@@ -721,6 +825,7 @@ class RunController extends ChangeNotifier {
     tray = List<TrayItem?>.filled(slotCount, null);
     _refill();
     haptics.snap();
+    sfx.snap();
     _checkJam();
     notifyListeners();
     _save();
@@ -752,6 +857,9 @@ class RunController extends ChangeNotifier {
 
   void _onWin() {
     _stagesCleared++;
+    _recordFaultCleared();
+    haptics.win();
+    sfx.win();
     log.add(RunEvent(ladder.stage, 'You win!'));
     account.wins++;
     if (_stagesCleared > account.milestones.bestStage) {
@@ -763,6 +871,12 @@ class RunController extends ChangeNotifier {
 
   void _endRun() {
     phase = ladder.phase == RunPhase.won ? GamePhase.won : GamePhase.lost;
+    // A loss used to end in silence while a combo break got a full buzz. A
+    // jam is 43% of early deaths and the moment that most needs to register.
+    if (phase == GamePhase.lost) {
+      haptics.runEnd();
+      sfx.runEnd();
+    }
 
     // Payout keys off STAGES, never score (docs/04 §1) — and pays for every
     // stage the run REACHED, so the stage you fought and lost is worth
@@ -851,10 +965,13 @@ class RunController extends ChangeNotifier {
     'phase': phase.name,
     'tools': toolCharges,
     'batten': battenCharges,
-    'temple': _templeSpentThisStage,
     'placementsThisStage': _placementsThisStage,
+    'temple': _templeSpentThisStage,
     'stagesCleared': _stagesCleared,
     'firstRunOfDay': _firstRunOfDay,
+    // Serialised rather than re-read from the account on restore, or resuming
+    // a run would hand it every milestone earned since it started.
+    'poolMilestones': _poolMilestones.toJson(),
     'log': [
       for (final e in log) {'stage': e.stage, 'text': e.text},
     ],
@@ -965,10 +1082,16 @@ class RunController extends ChangeNotifier {
           e.key: (e.value as num).toInt(),
       });
     battenCharges = (j['batten'] as num?)?.toInt() ?? 0;
-    _templeSpentThisStage = (j['temple'] as bool?) ?? false;
     _placementsThisStage = (j['placementsThisStage'] as num?)?.toInt() ?? 0;
     _stagesCleared = (j['stagesCleared'] as num?)?.toInt() ?? 0;
+    _templeSpentThisStage = (j['temple'] as bool?) ?? false;
     _firstRunOfDay = (j['firstRunOfDay'] as bool?) ?? false;
+    final pool = j['poolMilestones'] as Map<String, dynamic>?;
+    // A save from a build that predates the snapshot falls back to the
+    // account, which is the old behaviour — wrong, but not a crash, and only
+    // for runs already in progress at upgrade time.
+    _poolMilestones =
+        pool == null ? account.milestones : Milestones.fromJson(pool);
     log
       ..clear()
       ..addAll([
@@ -989,7 +1112,7 @@ class RunController extends ChangeNotifier {
       draftOptions = offerDraft(
         tuning.powers,
         powers,
-        account.milestones,
+        _poolMilestones,
         _stagesCleared,
         Rng(seed, _rng.cursor),
         reward: activeFault?.reward ?? DraftReward.normal,

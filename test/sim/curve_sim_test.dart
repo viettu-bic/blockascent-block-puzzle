@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:loomcraft/core/bag.dart';
 import 'package:loomcraft/core/board.dart';
 import 'package:loomcraft/core/rng.dart';
+import 'package:loomcraft/core/scoring.dart';
 import 'package:loomcraft/core/run.dart';
 import 'package:loomcraft/core/shapes.dart';
 import 'package:loomcraft/core/types.dart';
@@ -31,12 +32,48 @@ void main() {
   const runs = 120;
   const traySlots = 3;
 
-  /// The tuned curve from `data/curve.json`, with the 12-stage cap lifted.
-  final unbounded = CurveConfig.defaults.copyWith(stages: 1 << 30);
+  /// The curve the **oracle** played: `data/curve.json` with the 12-stage cap
+  /// lifted, and `patienceMax` pinned back to 2.
+  ///
+  /// Patience went to 3 on 2026-11-11 (docs/05 §7). The TypeScript oracle in
+  /// `reference/` predates that and will never be re-run, so comparing against
+  /// it means playing the rules it played. This gate exists to catch a silent
+  /// RNG or rounding difference in the **engine** — pinning a tuning value it
+  /// was measured at is what keeps it answering that question instead of
+  /// re-answering "did someone change the tuning", which the gates test does
+  /// deliberately and loudly.
+  /// Every tuning value is pinned here rather than inherited from
+  /// `CurveConfig.defaults`. Inheriting is what broke this gate the first time
+  /// the curve was re-steepened: the oracle played x1.25 with patience 2, so
+  /// reading the live numbers made the parity check compare two different
+  /// games and report an engine fault that did not exist.
+  final oracleScoring = ScoringConfig.defaults.copyWith(patienceMax: 2);
+  final oracleCurve = CurveConfig(
+    baseTarget: 100,
+    targetGrowth: 1.25,
+    baseAllowance: 20,
+    allowanceGrowth: 2,
+    scoring: oracleScoring,
+  );
+  final unbounded = oracleCurve.copyWith(stages: 1 << 30);
+
+  /// The eleven motifs the oracle drew from, pinned by id.
+  ///
+  /// It used to read `spikeLoadout`, which is `tier1 + tier2` — and the roster
+  /// inverted on 2026-11-11, so that list is now nine different motifs. Same
+  /// lesson as pinning the curve above: a parity gate has to play the rules
+  /// the oracle played, or it reports an engine fault every time the design
+  /// moves.
+  final oracleLoadout = [
+    for (final id in [
+      'dot', 'i2', 'i3', 'o2', 'l3', 'i4', 't4', 's4', 'z4', 'j4', 'l4',
+    ])
+      shape(id),
+  ];
 
   RunReport playOne(int seed, CurveConfig cfg) {
     final rng = Rng(seed);
-    final bag = Bag(spikeLoadout, rng);
+    final bag = Bag(oracleLoadout, rng);
     var board = createBoard();
     var tray = <TrayItem?>[];
     var ladder = startRun(cfg);
@@ -206,7 +243,7 @@ void main() {
     // ladder — if a greedy run ever reached stage 12 the two would diverge on
     // the tail, and this test is the tripwire for that.
     expect(stages.last, lessThan(12));
-    final capped = [for (var i = 1; i <= runs; i++) playOne(i, CurveConfig.defaults)];
+    final capped = [for (var i = 1; i <= runs; i++) playOne(i, oracleCurve)];
     expect(capped.where((r) => r.won), isEmpty);
     for (var i = 0; i < runs; i++) {
       expect(capped[i].stage, reports[i].stage, reason: 'seed ${i + 1}');

@@ -14,10 +14,10 @@ void main() {
       // A shuffled bag rather than independent draws: independent draws
       // produce streaks of the same piece that read as unfair.
       final bag = Bag(spikeLoadout, Rng(42));
-      final first = [for (var i = 0; i < 11; i++) bag.draw().id];
-      expect(first.toSet(), hasLength(11));
-      final second = [for (var i = 0; i < 11; i++) bag.draw().id];
-      expect(second.toSet(), hasLength(11));
+      final first = [for (var i = 0; i < 10; i++) bag.draw().id];
+      expect(first.toSet(), hasLength(10));
+      final second = [for (var i = 0; i < 10; i++) bag.draw().id];
+      expect(second.toSet(), hasLength(10));
     });
 
     test('is deterministic for a seed', () {
@@ -67,18 +67,21 @@ void main() {
         final bag = Bag(spikeLoadout, Rng(5));
         final big = bag.drawWhere((s) => s.cellCount >= 4)!;
         final rest = [for (var i = 0; i < 10; i++) bag.draw().id];
-        expect({big.id, ...rest}, hasLength(11));
+        expect({big.id, ...rest}, hasLength(10));
       });
     });
 
     group('cull and favour', () {
       test('Cull removes a motif from the run for good', () {
         final bag = Bag(spikeLoadout, Rng(2));
-        expect(bag.cull('dot'), isTrue);
+        // `l3`, not `dot`: the roster inverted and `dot` is the single most
+        // expensive purchase in the game now, so it is not in the spike
+        // loadout (lib/core/shapes.dart).
+        expect(bag.cull('l3'), isTrue);
         bag.resetPending();
-        expect(bag.loadout.map((s) => s.id), isNot(contains('dot')));
+        expect(bag.loadout.map((s) => s.id), isNot(contains('l3')));
         for (var i = 0; i < 60; i++) {
-          expect(bag.draw().id, isNot('dot'));
+          expect(bag.draw().id, isNot('l3'));
         }
       });
 
@@ -95,10 +98,10 @@ void main() {
 
       test('Favour doubles a motif, so it comes up twice per shuffle', () {
         final bag = Bag(tier1, Rng(9));
-        bag.favour('dot');
+        bag.favour('l3');
         bag.resetPending();
         final cycle = [for (var i = 0; i < 6; i++) bag.draw().id];
-        expect(cycle.where((id) => id == 'dot'), hasLength(2));
+        expect(cycle.where((id) => id == 'l3'), hasLength(2));
       });
 
       test('Favour rejects a motif that is not in the loadout', () {

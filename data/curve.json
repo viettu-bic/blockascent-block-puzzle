@@ -1,24 +1,28 @@
 {
   "_": "Run pacing. These are the numbers most likely to be wrong — keep them here, never inline, so tuning never needs a rebuild. tests/curve.sim.test.ts plays this curve with a floor-level greedy player and reports where runs actually die.",
 
-  "_evidence": "A greedy player with no lookahead scores ~158 per stage and peaks at x1.60. Its capability is roughly FLAT across stages (more allowance, but a dirtier carried-over board), so growth of 1.45 killed 100% of runs on stage 1. At 100 x1.25 it reaches a median of ~6 stages: stage 1 is free, stage 3-4 is the first real bite.",
+  "_evidence": "A greedy player with no lookahead and a 13-motif loadout scores ~158 per stage. Its capability is roughly FLAT across stages (more allowance, but a dirtier carried-over board), so growth of 1.45 killed 100% of runs on stage 1. NOTE that the ~158 figure, and every 'x floor capability' table derived from it in docs/06 2, was measured with no draft, no account and patience 2 — a player who no longer exists. Treat those tables as historical; the live numbers are the three gates in test/sim/gates_sim_test.dart.",
 
-  "_revisit": "Growth must be re-steepened once the power draft exists. The design intends builds, not raw play, to keep pace with the curve — until powers land there is nothing to scale the player, so this curve is tuned against an unassisted player and will be too soft afterwards.",
+  "_resteepened": "1.25 -> 1.32 -> 1.34 -> 1.38 on 2026-11-11, every step MEASURED with the draft, the account, patience 3 and fault gating switched on (test/sim/gates_sim_test.dart). 1.25 was tuned against an unassisted player and was far too soft once eleven picks existed: an 85%-unlock account won 90% of its runs and even a 0%-unlock account won some. 1.32 fixed that. 1.34 paid for widening the free roster to six motifs (docs/08 A3) - more equipment at the bottom needs a steeper top. 1.38 paid for the draft policy being fixed: eight card gains were measured and written back, which made the SIM draft well, and a sim that drafts well is a better proxy for a human, so every earlier gate number flattered the meta (docs/05 9). Around twenty values swept in all.",
+
+  "_stillWrong": "One gate is unmet and its cause is measured: a 100%-unlock account wins only 22% of its runs against the >50% docs/06 3 asks for. Standard Yarn and Selvage each measure 48% - above the rare band and above this growth rate - and both are INITIAL cards, so a player who owns nothing and takes those two repeatedly gets most of the way to a full account and the shop has little left to sell. Bringing those two down is docs/08 C6 and should come before anything else in the pool is touched. Do NOT re-steepen again to chase it: steepening moves all three gates together and cannot widen the 0%-to-100% gap, which is what is actually too narrow.",
 
   "_stages": "12 stages, three acts of four, a fault stage ending each act (docs/06). Do NOT extend to 13+: stage 13 asks 9.2x floor capability and the curve runs away from any build the power pool can produce.",
   "stages": 12,
 
   "_scoring": "The combo multiplier — 'rhythm'. Kept here rather than inline in Dart so tuning never needs a rebuild (spec 2.8). lineBonus is indexed by lines cleared at once and is deliberately super-linear so multi-line setups pay.",
+  "_patience": "Raised from 2 to 3 on 2026-11-11. At 2 the rhythm broke constantly for an under-equipped player: the measured median PEAK rhythm at 0% unlocks is x1.60 against a x4.00 cap, so the cap was decoration and the combo system — the design's best idea (docs/01 3) — was mostly not running. Note what this costs: +1 patience IS the Patience card, the pool's strongest uncommon at an estimated +24%, so every player now gets it free and from install. That is paid for in targetGrowth, and the Patience card itself has to be re-read as 3->4 rather than 2->3. See docs/05 7.",
   "scoring": {
     "lineBonus": [0, 10, 25, 45, 70, 100],
     "multStart": 1.0,
     "multStep": 0.2,
     "multCap": 4.0,
-    "patienceMax": 2
+    "patienceMax": 3
   },
 
-  "baseTarget": 100,
-  "targetGrowth": 1.25,
+  "_baseTarget": "100 -> 80 on 2026-11-12, because placing a block scores nothing now (docs/05 10) and a 0%-unlock player lives entirely on line bonus. Swept 22/28/35/45/60/80/110/150/200: at 110 and above the 0%-unlock median death is STAGE 1, below 60 a 0%-unlock account starts winning the campaign. Do not move targetGrowth to chase this - growth governs the jam axis (docs/04 9).",
+  "baseTarget": 80,
+  "targetGrowth": 1.43,
   "baseAllowance": 20,
   "allowanceGrowth": 2
 }

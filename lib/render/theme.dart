@@ -16,8 +16,8 @@
 ///
 /// The load-bearing contrast in this game is **filled cell versus empty cell**:
 /// it is how a player reads the board at all. Every one of the nine yarns
-/// clears 3:1 against [emptyCell] in *both* themes, which is the non-text UI
-/// threshold. Getting there is why the dark ramp spans a narrower lightness
+/// clears 3:1 against [emptyCell], which is the non-text UI threshold.
+/// Getting there is why the ramp spans a narrower lightness
 /// range than a naive dark-to-light gradient would: the heavy end cannot go as
 /// dark as the dye names suggest without disappearing into the board.
 ///
@@ -35,9 +35,13 @@
 ///
 /// [accent] and [warn] are **fills and indicators** (3:1, non-text).
 /// [accentInk] and [warnInk] are the **text** versions of the same ideas
-/// (4.5:1), and [onAccent] is text drawn *on* an accent fill. In dark mode the
-/// pairs happen to coincide; in light mode a gold that works as a button fill
-/// is far too pale to read as text, so they must be separate tokens.
+/// (4.5:1), and [onAccent] is text drawn *on* an accent fill.
+///
+/// On this palette each pair happens to coincide, and the pairs are kept
+/// apart anyway. They were separate because a gold that worked as a button
+/// fill on the light palette was far too pale to read as text; the light
+/// palette is gone (`docs/07` §4i), but the call sites still say which job
+/// they are asking for, and that is the half of the distinction worth having.
 library;
 
 
@@ -119,10 +123,6 @@ class LoomPalette {
   final Color highlight;
   final Color shadow;
 
-  /// True for the dark palette. Used only to pick between theme-keyed
-  /// constant tables that cannot live on the palette itself.
-  bool get isDark => background.computeLuminance() < 0.5;
-
   Color yarnFor(int cellCount) => yarns[cellCount.clamp(1, yarns.length - 1)];
 
   /// Plain size words, so a player can name a block without naming a colour
@@ -143,8 +143,10 @@ class LoomPalette {
   static String sizeName(int cellCount) =>
       sizeNames[cellCount.clamp(1, sizeNames.length - 1)];
 
-  /// Dark is the default: a loom in a workshop, not a candy shelf. The store
-  /// art has to read roguelite-with-stakes rather than cozy-craft (docs/03 §5).
+  /// The palette. Not the default one — the only one, since 2026-11-12
+  /// (`docs/07` §4i). The game does not follow the system light/dark setting:
+  /// the night sky is the product, and the store art has to read
+  /// roguelite-with-stakes rather than cozy-craft (docs/03 §5).
   static const LoomPalette dark = LoomPalette(
     background: Color(0xFF14161C),
     frame: Color(0xFF0E1014),
@@ -183,45 +185,6 @@ class LoomPalette {
     ],
   );
 
-  static const LoomPalette light = LoomPalette(
-    background: Color(0xFFF4EFE4),
-    frame: Color(0xFFCFC0A4),
-    boardBackground: Color(0xFFDCD1BC),
-    emptyCell: Color(0xFFE6DDCB),
-    gridLine: Color(0xFFB5A68B),
-    ink: Color(0xFF231F1A),
-    inkMuted: Color(0xFF5C5449),
-    // A deep bronze, not a pale gold. A gold light enough to carry dark text
-    // is far too light to be seen as a progress bar against its own track, and
-    // the bar is the more important of the two jobs.
-    accent: Color(0xFF7A5308),
-    onAccent: Color(0xFFF4EFE4),
-    accentInk: Color(0xFF7A5308),
-    warn: Color(0xFFB2412A),
-    warnInk: Color(0xFF9E3A25),
-    // Above the yarn ramp here, for the same reason it is below it in dark
-    // mode: outside the range of anything that could be thread.
-    knot: Color(0xFFA29786),
-    knotMark: Color(0xFF332E27),
-    weaveLine: Color(0xFFDCD2BE),
-    panel: Color(0xFFEFE8D9),
-    highlight: Color(0x14FFFFFF),
-    shadow: Color(0x38000000),
-    // Dark dye on pale linen. Mirrored: the whole ramp sits *below* the empty
-    // cell's luminance so the same 3:1 floor holds from the other side.
-    yarns: [
-      Color(0x00000000),
-      Color(0xFF977A1C),
-      Color(0xFF917004),
-      Color(0xFFA95704),
-      Color(0xFFC52505),
-      Color(0xFFBA0F4E),
-      Color(0xFF9025A1),
-      Color(0xFF3E36D4),
-      Color(0xFF0F5368),
-      Color(0xFF0D5137),
-    ],
-  );
 }
 
 /// Rarity colours for draft cards. Code does the systematic part — the frame,
@@ -231,30 +194,21 @@ class LoomPalette {
 /// Rarity is never the *only* cue: a card also shows its rarity as a word, and
 /// a fault shows its tier as filled pips, because a rarity a player cannot
 /// distinguish is a rarity that does not exist.
-/// Keyed per theme: a gold that reads as "rare" on a dark card is invisible on
-/// a cream one.
 /// Spaced in **luminance**, not just hue: at the first pass these three were
 /// a grey, a blue and a gold of near-identical lightness, so the tiers were
 /// hue-only and a colourblind player could not rank them at all. Brighter is
-/// rarer in dark mode, darker is rarer in light — the same logic the yarn ramp
-/// uses. The printed rarity word remains the non-colour cue regardless.
-const Map<String, Color> rarityColoursDark = {
+/// rarer. The printed rarity word remains the non-colour cue regardless.
+///
+/// There was a second table for the light palette, where darker was rarer.
+/// It went with the palette (`docs/07` §4i).
+const Map<String, Color> rarityColours = {
   'common': Color(0xFF6C737E),
   'uncommon': Color(0xFF4DA5CB),
   'rare': Color(0xFFE9C767),
 };
 
-const Map<String, Color> rarityColoursLight = {
-  'common': Color(0xFF7E8691),
-  'uncommon': Color(0xFF276A87),
-  'rare': Color(0xFF58440D),
-};
-
-Map<String, Color> rarityColoursFor(LoomPalette p) =>
-    p.isDark ? rarityColoursDark : rarityColoursLight;
-
 Color rarityColour(LoomPalette p, String rarity) =>
-    rarityColoursFor(p)[rarity] ?? p.inkMuted;
+    rarityColours[rarity] ?? p.inkMuted;
 
 /* ------------------------------------------------------------------ */
 /* Spacing                                                            */
@@ -355,15 +309,15 @@ bool reduceMotionOf(BuildContext context) =>
 /// without pushing the tray off the bottom of the screen.
 const double maxTextScale = 1.4;
 
-ThemeData buildTheme(LoomPalette p, Brightness brightness) {
+ThemeData buildTheme(LoomPalette p) {
   final scheme = ColorScheme.fromSeed(
     seedColor: p.accent,
-    brightness: brightness,
+    brightness: Brightness.dark,
   ).copyWith(surface: p.background, onSurface: p.ink);
 
   return ThemeData(
     useMaterial3: true,
-    brightness: brightness,
+    brightness: Brightness.dark,
     colorScheme: scheme,
     scaffoldBackgroundColor: p.background,
     canvasColor: p.background,

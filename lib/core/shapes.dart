@@ -90,23 +90,39 @@ Shape _def(String id, int tier, List<String> art) {
 // I-tetromino IS the 1×4, so each appears exactly once. A naive roster
 // double-lists them and the draw bag silently skews small.
 
+/// Free at install: **nothing under three cells**.
+///
+/// This is what makes a first run die to a jam rather than to a score target
+/// (docs/08 B7). One- and two-cell gaps cannot be filled by anything in this
+/// set, so a board clogs, and the measured jam rate at install is **58% of
+/// deaths** — against 0% when the small motifs were free, which meant one of
+/// the game's two ways to lose never fired at all.
+///
+/// Liquidity is then the thing the shop sells. Buying `i2` alone drops the jam
+/// rate to 20%; `i3` and `i4` take it to 7%. That decline *is* the progression
+/// curve, and it is something a player can feel — "I stopped getting stuck" —
+/// where "+4 stages of median depth" never was.
 final List<Shape> tier1 = [
-  _def('dot', 1, ['#']),
-  _def('i2', 1, ['##']),
-  _def('i3', 1, ['###']),
-  _def('o2', 1, ['##', '##']),
   _def('l3', 1, ['#.', '##']),
+  _def('o2', 1, ['##', '##']),
+  _def('t4', 1, ['###', '.#.']),
+  _def('s4', 1, ['.##', '##.']),
+  _def('z4', 1, ['##.', '.##']),
 ];
 
+/// Liquidity, cheap. `i2` first: it is the single biggest drop in jam rate
+/// any purchase in the game buys (58% → 20%).
 final List<Shape> tier2 = [
+  _def('i2', 2, ['##']),
+  _def('i3', 2, ['###']),
   _def('i4', 2, ['####']),
-  _def('t4', 2, ['###', '.#.']),
-  _def('s4', 2, ['.##', '##.']),
-  _def('z4', 2, ['##.', '.##']),
   _def('j4', 2, ['.#', '.#', '##']),
   _def('l4', 2, ['#.', '#.', '##']),
 ];
 
+/// The big blocks. They score, and they clog — so fielding one is buying jam
+/// risk back in exchange for points, which is the trade that makes a size
+/// dimension worth having at all (docs/08 B6).
 final List<Shape> tier3 = [
   _def('i5', 3, ['#####']),
   _def('r23', 3, ['###', '###']),
@@ -114,14 +130,17 @@ final List<Shape> tier3 = [
   _def('u5', 3, ['#.#', '###']),
   _def('p5', 3, ['##', '##', '#.']),
   _def('t5', 3, ['###', '.#.', '.#.']),
+  _def('o3', 3, ['###', '###', '###']),
+  _def('r24', 3, ['####', '####']),
+  _def('w5', 3, ['#..', '##.', '.##']),
+  _def('z5', 3, ['##.', '.#.', '.##']),
+  _def('f5', 3, ['.##', '##.', '.#.']),
 ];
 
+/// **`dot`.** The most expensive purchase in the game, and the last answer to
+/// a one-cell hole there is.
 final List<Shape> tier4 = [
-  _def('o3', 4, ['###', '###', '###']),
-  _def('r24', 4, ['####', '####']),
-  _def('w5', 4, ['#..', '##.', '.##']),
-  _def('z5', 4, ['##.', '.#.', '.##']),
-  _def('f5', 4, ['.##', '##.', '.#.']),
+  _def('dot', 4, ['#']),
 ];
 
 final List<Shape> allShapes = [...tier1, ...tier2, ...tier3, ...tier4];

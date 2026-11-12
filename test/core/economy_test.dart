@@ -32,7 +32,10 @@ void main() {
       expect(s.multStart, 1.0);
       expect(s.multStep, 0.2);
       expect(s.multCap, 4.0);
-      expect(s.patienceMax, 2);
+      // Raised from 2 on 2026-11-11: at 2 the rhythm broke so often that the
+      // ×4.00 cap was decoration — measured median peak was ×1.60 at 0%
+      // unlocks (docs/05 §7).
+      expect(s.patienceMax, 3);
     });
 
     test('the JSON and the in-code defaults have not drifted apart', () {
@@ -119,19 +122,23 @@ void main() {
   group('shape costs', () {
     test('tier 1 is free and the other three tiers are priced', () {
       expect(economy.shapeCosts[1], isNull);
-      expect(economy.shapeCosts[2], hasLength(6));
-      expect(economy.shapeCosts[3], hasLength(6));
-      expect(economy.shapeCosts[4], hasLength(5));
+      expect(economy.shapeCosts[2], hasLength(5));
+      expect(economy.shapeCosts[3], hasLength(11));
+      expect(economy.shapeCosts[4], hasLength(1));
     });
 
-    test('17 shapes to unlock for 14,020 spools', () {
+    test('17 shapes to unlock for 13,680 spools', () {
       final all = [
         ...economy.shapeCosts[2]!,
         ...economy.shapeCosts[3]!,
         ...economy.shapeCosts[4]!,
       ];
+      // The roster inverted on 2026-11-11: the free five are the awkward
+      // motifs and the two smallest — `i2` and `dot` — are the most expensive
+      // purchases in the game, because finishing a one-cell hole is the most
+      // valuable thing a motif can do (shapes.dart).
       expect(all, hasLength(17));
-      expect(all.reduce((a, b) => a + b), 14020);
+      expect(all.reduce((a, b) => a + b), 13680);
     });
 
     test('prices rise within a tier, so the next unlock always costs more', () {
@@ -145,9 +152,9 @@ void main() {
 
     test('the nth unlock in a tier is priced by how many you already own', () {
       expect(economy.costOfNthShapeInTier(2, 0), 40);
-      expect(economy.costOfNthShapeInTier(2, 5), 420);
+      expect(economy.costOfNthShapeInTier(2, 4), 480);
       // Owning the whole tier clamps rather than throwing.
-      expect(economy.costOfNthShapeInTier(2, 99), 420);
+      expect(economy.costOfNthShapeInTier(2, 99), 480);
       expect(economy.costOfNthShapeInTier(1, 0), 0);
     });
 
@@ -179,23 +186,51 @@ void main() {
         economy.costOfNthShapeInTier(2, 0) +
             economy.costOfNthShapeInTier(2, 1),
       ));
+
+      // And the precision motifs are the other end of the same scale: the most
+      // expensive purchases in the game, several runs of saving each. That
+      // ordering is the whole point of the inversion (shapes.dart).
+      expect(
+        economy.costOfNthShapeInTier(4, 0),
+        greaterThan(economy.shapeCosts[3]!.last),
+      );
     });
   });
 
   group('upgrades', () {
-    test('both tracks open from run 1, and 8,700 spools buys everything', () {
+    test('both tracks open from run 1, and 15,400 spools buys everything', () {
       // Unlike the original, upgrades are NOT gated behind unlocking every
       // shape.
       final total = economy.upgrades.values
           .map((u) => u.cost)
           .reduce((a, b) => a + b);
-      expect(total, 8700);
+      expect(total, 15400);
     });
 
-    test('the daily challenge is free and classic mode is not', () {
-      expect(economy.upgradeCost('dailyChallenge'), 0);
-      expect(economy.upgradeCost('classicMode'), 400);
-      expect(economy.upgradeCost('loadoutSlot9'), 1800);
+    test('the upgrades are structural, not flat numbers', () {
+      // Rebuilt 2026-11-12. These used to be seven small additions — +1 value,
+      // +2 moves on stage 1, one shield — against a shop whose job is now to
+      // sell a player out of jams (docs/08 B7). A flat +1 cannot do that, so
+      // every upgrade is a slot, a charge, a guarantee or an allowance.
+      expect(economy.upgradeCost('fourthTraySlot'), 2600);
+      expect(economy.upgradeCost('handful'), 2200);
+      expect(economy.upgradeCost('toolkit'), 1400);
+      expect(economy.upgradeCost('loadoutSlot10'), 1600);
+    });
+
+    test('modes are not sold as upgrades', () {
+      // Removed on 2026-11-11. `dailyChallenge` cost 0 spools and was
+      // referenced nowhere in `lib/` — the shop sold a player something that
+      // did nothing. `classicMode` was worse: buying it disabled rotation for
+      // *every* run with no way to turn it off, so 400 spools bought a
+      // permanent handicap, and the test harness here had already worked
+      // around it rather than fixing it.
+      //
+      // Both are modes and need a picker before a run (docs/08 E5). An
+      // unknown id costs 0, so these read as absent rather than free.
+      expect(economy.upgrades.containsKey('dailyChallenge'), isFalse);
+      expect(economy.upgrades.containsKey('classicMode'), isFalse);
+      expect(economy.upgradeCost('loadoutSlot9'), 900);
     });
 
     test('every upgrade has a display name', () {
@@ -205,29 +240,30 @@ void main() {
     });
 
     test('the run-shaping upgrades carry their effect text', () {
-      expect(economy.upgrades['openingRhythm']!.effect, contains('x1.2'));
+      expect(economy.upgrades['openingRhythm']!.effect, contains('x2.0'));
       expect(economy.upgrades['startingSelvage']!.effect, contains('shield'));
-      expect(economy.upgrades['openingAllowance']!.effect, contains('+2'));
+      expect(economy.upgrades['openingAllowance']!.effect, contains('+5'));
     });
 
     test('an unknown upgrade costs nothing rather than throwing', () {
-      expect(economy.upgradeCost('fourthTraySlot'), 0);
+      expect(economy.upgradeCost('spoolsForever'), 0);
     });
 
-    test('a 4th tray slot is deliberately NOT purchasable', () {
-      // It is the single largest power swing in the game and it alters the
-      // refill-on-empty rule the whole difficulty rests on, so it belongs in
-      // the draft, where it costs a pick (economy.json._notIncluded).
-      expect(
-        economy.upgrades.keys.any((k) => k.toLowerCase().contains('tray')),
-        isFalse,
-      );
+    test('the 4th tray slot IS purchasable now, and still draftable', () {
+      // docs/04 §3 refused to sell it: the largest power swing in the game, it
+      // alters the refill-on-empty rule the difficulty rests on, it roughly
+      // halves jam risk. All three true, and all three are now *reasons to
+      // sell it* — halving jam risk is exactly what the shop is for once a
+      // first run dies to a jam 57% of the time (docs/08 B7).
+      expect(economy.upgrades.containsKey('fourthTraySlot'), isTrue);
+      // Second Shuttle stays in the draft and stacks on top, so a drafted
+      // fifth slot is still a real pick rather than a dead card.
       expect(tuning.powers.byId('second_shuttle').effect, contains('4th tray'));
     });
   });
 
   group('the whole meta, priced', () {
-    test('costs 22,800 spools, or about 50 floor runs', () {
+    test('costs 29,080 spools, or about 80 floor runs', () {
       final shapes = [
         ...economy.shapeCosts[2]!,
         ...economy.shapeCosts[3]!,
@@ -236,13 +272,13 @@ void main() {
       final upgrades = economy.upgrades.values
           .map((u) => u.cost)
           .reduce((a, b) => a + b);
-      expect(shapes + upgrades, 22720);
+      expect(shapes + upgrades, 29080);
 
       // A floor player clears 5 stages: 125 spools a run before the daily
       // bonus. The grind has to be long enough to pace discovery and short
       // enough to stay a game.
       final perRun = economy.payout.forStages(5);
-      expect((shapes + upgrades) / perRun, closeTo(182, 2));
+      expect((shapes + upgrades) / perRun, closeTo(233, 3));
     });
   });
 }

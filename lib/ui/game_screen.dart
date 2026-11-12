@@ -4,7 +4,9 @@ library;
 import 'package:flutter/material.dart';
 
 import '../game/run_controller.dart';
+import '../platform/music.dart';
 import '../render/theme.dart';
+import 'audio_settings.dart';
 import 'board_widget.dart';
 import 'hud.dart';
 import 'overlays.dart';
@@ -14,6 +16,7 @@ class GameScreen extends StatefulWidget {
   const GameScreen({
     super.key,
     required this.controller,
+    this.music,
     required this.palette,
     required this.onAgain,
     required this.onMenu,
@@ -21,6 +24,9 @@ class GameScreen extends StatefulWidget {
   });
 
   final RunController controller;
+
+  /// Owned by the app, not the controller — the music outlives a run.
+  final Music? music;
   final LoomPalette palette;
   final VoidCallback onAgain;
   final VoidCallback onMenu;
@@ -61,34 +67,16 @@ class _GameScreenState extends State<GameScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Base 36: a 32-bit seed is ten decimal digits, and the whole
-              // point of showing it is that a player can read it out or type
-              // it back in.
-              ListTile(
-                title: Text(
-                  'Seed',
-                  style: TextStyle(color: p.ink, fontSize: FontSize.bodySm),
-                ),
-                trailing: Text(
-                  seedCode(c.seed),
-                  style: TextStyle(
-                    color: p.accentInk,
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ),
-              SwitchListTile(
-                value: c.account.hapticsEnabled,
-                onChanged: (v) {
-                  setState(() {
-                    c.account.hapticsEnabled = v;
-                    c.haptics.enabled = v;
-                  });
-                  Navigator.of(context).pop();
-                },
-                title: Text('Haptics', style: TextStyle(color: p.ink)),
-                activeThumbColor: p.accent,
+              // The same three switches the menu shows, from one place: the
+              // in-run sheet used to be the *only* way to reach them, so
+              // turning the sound off meant starting a run first.
+              ...audioToggles(
+                account: c.account,
+                palette: p,
+                haptics: c.haptics,
+                sfx: c.sfx,
+                music: widget.music,
+                onChanged: () => setState(() {}),
               ),
               const Divider(height: Space.xl),
               // Separated from the toggle above by a divider and sitting in
@@ -194,117 +182,129 @@ class _GameScreenState extends State<GameScreen> {
 
   Widget _buildScreen(BuildContext context) {
     return Scaffold(
-      backgroundColor: p.background,
+      backgroundColor: Colors.transparent,
       // `bottom: true`, deliberately. The tray is the primary touch region of
       // the whole game and it lives at the bottom of the screen, so leaving
       // the bottom inset unpadded put it directly under the home indicator
       // and the Android gesture strip — every drag that started low would
       // race the system's back/home swipe. The board shrinks by the inset
       // instead, which costs a few pixels of cell size and nothing else.
-      body: SafeArea(
-        child: Stack(
-          children: [
-            Column(
-              children: [
-                // The HUD is given at most half the screen and scrolls inside
-                // it. At a 1.4x text scale on a short phone the strip grew
-                // taller than the column and overflowed; capping it keeps the
-                // board playable and lets the readouts scroll rather than
-                // clip.
-                Flexible(
-                  child: SingleChildScrollView(
-                    child: Column(
-                      children: [
-                        Hud(
-                          controller: c,
-                          palette: p,
-                          onSettings: _openSettings,
-                        ),
-                        NextRefillStrip(controller: c, palette: p),
-                        HoldIndicator(controller: c, palette: p),
-                      ],
+      body: SkyBackground(
+        // No graticule here: the board paints the grid on its own cell pitch
+        // a layer up, and two grids at two pitches read as a mistake.
+        palette: p,
+        grid: null,
+        child: SafeArea(
+          child: Stack(
+            children: [
+              Column(
+                children: [
+                  // The HUD is given at most half the screen and scrolls inside
+                  // it. At a 1.4x text scale on a short phone the strip grew
+                  // taller than the column and overflowed; capping it keeps the
+                  // board playable and lets the readouts scroll rather than
+                  // clip.
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: Column(
+                        children: [
+                          Hud(
+                            controller: c,
+                            palette: p,
+                            onSettings: _openSettings,
+                          ),
+                          NextRefillStrip(controller: c, palette: p),
+                          HoldIndicator(controller: c, palette: p),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                // The board must never be squeezed to nothing: below this it
-                // stops being a game.
-                Expanded(
-                  flex: 3,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 240),
-                    child: BoardWidget(controller: c, palette: p),
-                  ),
-                ),
-              ],
-            ),
-            if (c.aiming != ToolAim.none)
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Material(
-                  color: p.accent,
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
-                      Space.lg,
-                      Space.sm,
-                      Space.sm,
-                      Space.sm,
+                  // Pinned, deliberately outside the scrollable above. The
+                  // tools are the only interactive thing in the top half, and
+                  // inside the capped scroll view they slid out of sight between
+                  // the header and the board as soon as the readouts grew. It
+                  // takes no space until a tool is drafted.
+                  ToolRow(controller: c, palette: p),
+                  // The board must never be squeezed to nothing: below this it
+                  // stops being a game.
+                  Expanded(
+                    flex: 3,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 240),
+                      child: BoardWidget(controller: c, palette: p),
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            _aimHint(c.aiming),
-                            style: TextStyle(
-                              color: p.onAccent,
-                              fontWeight: FontWeight.w600,
-                              fontSize: FontSize.bodySm,
+                  ),
+                ],
+              ),
+              if (c.aiming != ToolAim.none)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Material(
+                    color: p.accent,
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(
+                        Space.lg,
+                        Space.sm,
+                        Space.sm,
+                        Space.sm,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _aimHint(c.aiming),
+                              style: TextStyle(
+                                color: p.onAccent,
+                                fontWeight: FontWeight.w600,
+                                fontSize: FontSize.bodySm,
+                              ),
                             ),
                           ),
-                        ),
-                        // An armed tool must always have a way out — the
-                        // `escape-routes` rule, and the difference between a
-                        // mis-tap and a wasted charge.
-                        TextButton(
-                          onPressed: c.cancelAim,
-                          style: TextButton.styleFrom(
-                            foregroundColor: p.onAccent,
-                            minimumSize: const Size(
-                              minTapTarget,
-                              minTapTarget,
+                          // An armed tool must always have a way out — the
+                          // `escape-routes` rule, and the difference between a
+                          // mis-tap and a wasted charge.
+                          TextButton(
+                            onPressed: c.cancelAim,
+                            style: TextButton.styleFrom(
+                              foregroundColor: p.onAccent,
+                              minimumSize: const Size(
+                                minTapTarget,
+                                minTapTarget,
+                              ),
                             ),
+                            child: const Text('Cancel'),
                           ),
-                          child: const Text('Cancel'),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            if (c.phase == GamePhase.faultChoice)
-              Positioned.fill(
-                child: FaultChoiceOverlay(controller: c, palette: p),
-              ),
-            if (c.phase == GamePhase.draft)
-              Positioned.fill(
-                child: DraftOverlay(controller: c, palette: p),
-              ),
-            if (c.phase == GamePhase.motifChoice)
-              Positioned.fill(
-                child: MotifChoiceOverlay(controller: c, palette: p),
-              ),
-            if (c.phase == GamePhase.lost || c.phase == GamePhase.won)
-              Positioned.fill(
-                child: SummaryOverlay(
-                  controller: c,
-                  palette: p,
-                  onAgain: widget.onAgain,
-                  onMenu: widget.onMenu,
-                  onShop: widget.onShop,
+              if (c.phase == GamePhase.faultChoice)
+                Positioned.fill(
+                  child: FaultChoiceOverlay(controller: c, palette: p),
                 ),
-              ),
-          ],
+              if (c.phase == GamePhase.draft)
+                Positioned.fill(
+                  child: DraftOverlay(controller: c, palette: p),
+                ),
+              if (c.phase == GamePhase.motifChoice)
+                Positioned.fill(
+                  child: MotifChoiceOverlay(controller: c, palette: p),
+                ),
+              if (c.phase == GamePhase.lost || c.phase == GamePhase.won)
+                Positioned.fill(
+                  child: SummaryOverlay(
+                    controller: c,
+                    palette: p,
+                    onAgain: widget.onAgain,
+                    onMenu: widget.onMenu,
+                    onShop: widget.onShop,
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );

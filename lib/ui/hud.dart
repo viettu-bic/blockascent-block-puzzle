@@ -293,19 +293,10 @@ class Hud extends StatelessWidget {
                 ],
               ),
             ),
-          if (_anyTools(c)) ...[
-            const SizedBox(height: 8),
-            _ToolRow(controller: c, palette: palette),
-          ],
         ],
       ),
     );
   }
-
-  static bool _anyTools(RunController c) =>
-      c.toolCharges.values.any((n) => n > 0) ||
-      c.battenCharges > 0 ||
-      (c.powers.hasHold && c.holdItem == null);
 }
 
 class _PatiencePips extends StatelessWidget {
@@ -340,8 +331,25 @@ class _PatiencePips extends StatelessWidget {
   );
 }
 
-class _ToolRow extends StatelessWidget {
-  const _ToolRow({required this.controller, required this.palette});
+/// The charged tools a run has drafted: Eraser, Bomb, Reshuffle, Swap Tray,
+/// Clear row/col.
+///
+/// **This is pinned in the screen's column, not placed inside the HUD.** It
+/// used to be the last child of [Hud], which lives in a height-capped
+/// `SingleChildScrollView` — so as soon as the readouts above it grew (a long
+/// fault name, a large text scale, a short phone) the tools scrolled out of
+/// sight between the header and the board, with no scrollbar to say they were
+/// there.
+///
+/// That is worse than untidy. These are charge-limited escape valves priced at
+/// 12–20% of a stage's capability each (docs/05 §3), and a tool the player
+/// cannot see is a card they paid a pick for and will never spend. Anything
+/// the player *acts on* belongs outside a scrollable; readouts can scroll.
+///
+/// It renders nothing at all when there is nothing to show, so the board keeps
+/// the space until a tool is actually drafted.
+class ToolRow extends StatelessWidget {
+  const ToolRow({super.key, required this.controller, required this.palette});
 
   final RunController controller;
   final LoomPalette palette;
@@ -349,15 +357,29 @@ class _ToolRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = controller;
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
+    final buttons = _buttons(c);
+    if (buttons.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 4, 10, 6),
+      // Horizontal, so a wide set of tools at a large text scale runs off the
+      // side where the player can reach it rather than off the top.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(children: buttons),
+      ),
+    );
+  }
+
+  List<Widget> _buttons(RunController c) {
+    return [
           if (c.hasTool('unpick'))
             ToolButton(
               palette: palette,
               label: 'Eraser',
-              icon: Icons.backspace_outlined,
+              // `backspace` is text deletion — a left arrow with an X. This
+              // erases one cell of the board, so a square with a line through
+              // it says it better.
+              icon: Icons.deselect,
               charges: c.toolCharges['unpick'] ?? 0,
               active: c.aiming == ToolAim.unpick,
               onPressed: () => c.aiming == ToolAim.unpick
@@ -369,7 +391,11 @@ class _ToolRow extends StatelessWidget {
             ToolButton(
               palette: palette,
               label: 'Bomb',
-              icon: Icons.content_cut,
+              // Was `content_cut`, a pair of scissors — left over from the
+              // card's weaving name, Shears, after the player-facing label
+              // became Bomb. The icon and the label were telling the player
+              // two different things. A burst is what clearing a 2x2 is.
+              icon: Icons.flare,
               charges: c.toolCharges['shears'] ?? 0,
               active: c.aiming == ToolAim.shears,
               onPressed: () => c.aiming == ToolAim.shears
@@ -382,7 +408,8 @@ class _ToolRow extends StatelessWidget {
             ToolButton(
               palette: palette,
               label: 'Reshuffle',
-              icon: Icons.refresh,
+              // `refresh` reads as "retry". This shuffles the tray.
+              icon: Icons.shuffle,
               charges: c.toolCharges['rethread'] ?? 0,
               onPressed: c.rethread,
             ),
@@ -402,7 +429,9 @@ class _ToolRow extends StatelessWidget {
             ToolButton(
               palette: palette,
               label: 'Clear row',
-              icon: Icons.horizontal_rule,
+              // A matched pair with Clear col below, so the two read as one
+              // mechanic on two axes.
+              icon: Icons.table_rows,
               charges: c.battenCharges,
               active: c.aiming == ToolAim.battenRow,
               onPressed: () => c.aimBatten(row: true),
@@ -411,15 +440,17 @@ class _ToolRow extends StatelessWidget {
             ToolButton(
               palette: palette,
               label: 'Clear col',
-              icon: Icons.more_vert,
+              // **Was `more_vert`** — the three-dot overflow menu, which every
+              // phone user reads as "more options" and nobody reads as "clear
+              // a column". Material has no vertical rule, so the columns glyph
+              // is the honest choice.
+              icon: Icons.view_column,
               charges: c.battenCharges,
               active: c.aiming == ToolAim.battenCol,
               onPressed: () => c.aimBatten(row: false),
             ),
           ],
-        ],
-      ),
-    );
+    ];
   }
 }
 

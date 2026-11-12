@@ -18,7 +18,7 @@ class ScoringConfig {
     this.multStart = 1.0,
     this.multStep = 0.2,
     this.multCap = 4.0,
-    this.patienceMax = 2,
+    this.patienceMax = 3,
   });
 
   /// Points for clearing n lines at once, indexed by n. Super-linear, so
@@ -29,6 +29,11 @@ class ScoringConfig {
   final double multCap;
 
   /// Dry placements tolerated before the multiplier breaks.
+  ///
+  /// 3 since 2026-11-11, up from 2. At 2 an under-equipped player never got
+  /// near the x4.00 cap — measured median peak was x1.60 at 0% unlocks — so
+  /// the ceiling was decoration. Raising it hands every player the Patience
+  /// card for free, which is paid for in `targetGrowth` (docs/05 §7).
   final int patienceMax;
 
   static const ScoringConfig defaults = ScoringConfig();
@@ -197,6 +202,9 @@ TurnOutcome scoreTurn(
   ScoringConfig cfg = ScoringConfig.defaults,
   TurnModifiers mods = TurnModifiers.none,
 }) {
+  // Lines are where points come from. A placement pays only what the yarn
+  // family gives it, and `cellValue` starts at **zero** — see
+  // `PowerSet.cellValueFor`.
   final base =
       cellsPlaced * cellValue + cfg.lineBonus(linesCleared) + mods.flatBonus;
   final gained = _jsRound(base * s.multiplier);

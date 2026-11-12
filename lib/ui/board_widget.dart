@@ -128,6 +128,7 @@ class _BoardWidgetState extends State<BoardWidget>
 
   void _onLift(int slot) {
     widget.controller.haptics.lift();
+    widget.controller.sfx.lift();
     setState(() => _heldSlot = slot);
   }
 
@@ -146,7 +147,10 @@ class _BoardWidgetState extends State<BoardWidget>
       ghost = preview.isNotEmpty ? GhostState.willClear : GhostState.valid;
     }
 
-    if (anchor != _anchor) widget.controller.haptics.snap();
+    if (anchor != _anchor) {
+      widget.controller.haptics.snap();
+      widget.controller.sfx.snap();
+    }
 
     setState(() {
       _heldCentre = centre;
@@ -160,7 +164,10 @@ class _BoardWidgetState extends State<BoardWidget>
     // An invalid release never consumes the piece: it simply goes back to its
     // slot (spec §2.6).
     final placed = anchor != null && c.place(slot, anchor);
-    if (!placed) widget.controller.haptics.invalid();
+    if (!placed) {
+      widget.controller.haptics.invalid();
+      widget.controller.sfx.invalid();
+    }
     _clearHeld();
   }
 

@@ -123,10 +123,14 @@ void main() {
     });
 
     test('tier membership matches the roster table', () {
+      // The roster inverted on 2026-11-11: free = the awkward motifs, and
+      // tier 4 is the two SMALLEST in the game because finishing a one-cell
+      // hole is the most valuable thing a motif can do. A tier is a price
+      // band, not a size band (shapes.dart).
       expect(tier1, hasLength(5));
-      expect(tier2, hasLength(6));
-      expect(tier3, hasLength(6));
-      expect(tier4, hasLength(5));
+      expect(tier2, hasLength(5));
+      expect(tier3, hasLength(11));
+      expect(tier4, hasLength(1));
       for (final (i, group) in [tier1, tier2, tier3, tier4].indexed) {
         for (final s in group) {
           expect(s.tier, i + 1, reason: s.id);
@@ -135,7 +139,7 @@ void main() {
     });
 
     test('spike loadout is tiers 1 and 2 only', () {
-      expect(spikeLoadout, hasLength(11));
+      expect(spikeLoadout, hasLength(10));
       expect(spikeLoadout.every((s) => s.tier <= 2), isTrue);
     });
 

@@ -43,8 +43,8 @@ class CurveConfig {
   /// The values in `data/curve.json`, for pure-core tests and the simulation
   /// harness, which must not depend on an asset bundle.
   static const CurveConfig defaults = CurveConfig(
-    baseTarget: 100,
-    targetGrowth: 1.25,
+    baseTarget: 80,
+    targetGrowth: 1.43,
     baseAllowance: 20,
     allowanceGrowth: 2,
   );

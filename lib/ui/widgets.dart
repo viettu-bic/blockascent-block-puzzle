@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../core/powers.dart';
 import '../core/shapes.dart';
 import '../core/types.dart';
+import '../render/starfield.dart';
 import '../render/theme.dart';
 
 class LoomPanel extends StatelessWidget {
@@ -266,14 +267,18 @@ class _MotifPainter extends CustomPainter {
     // rather than a shape you can recognise and want.
     final stroke = dimmed
         ? (Paint()
-          ..color = outline
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1)
+            ..color = outline
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1)
         : null;
     for (final (cx, cy) in cells) {
       final rr = RRect.fromRectAndRadius(
-        Rect.fromLTWH(ox + cx * unit, oy + cy * unit, unit, unit)
-            .deflate(unit * 0.08),
+        Rect.fromLTWH(
+          ox + cx * unit,
+          oy + cy * unit,
+          unit,
+          unit,
+        ).deflate(unit * 0.08),
         Radius.circular(unit * 0.2),
       );
       canvas.drawRRect(rr, paint);
@@ -330,7 +335,8 @@ class PowerCard extends StatelessWidget {
     };
     return Semantics(
       button: onTap != null,
-      label: '${powerName(def.id)}. ${def.rarity.name} '
+      label:
+          '${powerName(def.id)}. ${def.rarity.name} '
           '${powerFamilyName(def.family)}. '
           '${def.effect}.'
           '${def.stacks > 1 ? ' Taken $stacksTaken of ${def.stacks}.' : ''}',
@@ -568,7 +574,8 @@ class SpoolTag extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-    label: '${formatScore(spools)} spools'
+    label:
+        '${formatScore(spools)} spools'
         '${affordable ? '' : ' — not enough'}',
     excludeSemantics: true,
     child: Row(
@@ -614,11 +621,12 @@ class LoomOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reduce = reduceMotionOf(context);
-    final content = Container(
+    final content = SkyBackground(
+      palette: palette,
       // Fully opaque, not 96%. At 96% the board's grid showed faintly through
       // the card text behind it; a scrim exists to isolate the foreground, and
-      // "almost isolated" is the one thing it must not be.
-      color: palette.background,
+      // "almost isolated" is the one thing it must not be. The sky behind it
+      // is drawn, not shown through: the board underneath stays hidden.
       child: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(
@@ -793,4 +801,43 @@ class _StaggerItemState extends State<_StaggerItem>
       child: widget.child,
     );
   }
+}
+
+/// Puts the sky behind a screen that is not the board.
+///
+/// Every screen gets its sky from here, the game screen included — the board
+/// canvas is transparent and sits over this, because it covers only the part
+/// of the screen below the HUD and a sky of its own would seam across the
+/// middle. Purely decorative, and behind everything: the child is drawn over
+/// it untouched.
+class SkyBackground extends StatelessWidget {
+  const SkyBackground({
+    super.key,
+    required this.palette,
+    required this.child,
+    this.grid = 44.0,
+  });
+
+  final LoomPalette palette;
+
+  /// The graticule's pitch, or null to leave it out — which the game screen
+  /// does, because the board draws the grid there on its own cell pitch.
+  final double? grid;
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    children: [
+      Positioned.fill(
+        child: RepaintBoundary(
+          child: CustomPaint(
+            painter: SkyPainter(palette, grid: grid),
+            isComplex: true,
+          ),
+        ),
+      ),
+      child,
+    ],
+  );
 }

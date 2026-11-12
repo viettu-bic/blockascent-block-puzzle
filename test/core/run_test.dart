@@ -32,26 +32,41 @@ void main() {
     // Pinned to data/curve.json. If you retune, update these deliberately —
     // the point is that a tuning change is never silent.
     test('matches the tuned ladder', () {
-      expect(targetFor(cfg, 1), 100);
-      expect(targetFor(cfg, 2), 125);
-      expect(targetFor(cfg, 3), 156);
+      // Re-steepened 1.25 -> 1.32 -> 1.34 -> 1.38 -> 1.42 -> 1.43, and 1.43 is where it stops: a steeper curve ends runs on the score target BEFORE a board can clog, which destroys the jam axis the progression now rests on (docs/08 B7). Measured, each step
+      // measured with the draft and the account switched on rather than
+      // reasoned out. 1.32 paid for the draft existing at all, 1.34 for a
+      // wider free roster, and 1.38 for a draft policy that finally ranked
+      // cards by measured worth instead of by guesses — a better player needs
+      // a steeper ladder, or a 0%-unlock account starts winning and the shop
+      // stops meaning anything (docs/06 §3a).
+      expect(targetFor(cfg, 1), 80);
+      expect(targetFor(cfg, 2), 114);
+      expect(targetFor(cfg, 3), 164);
       expect(allowanceFor(cfg, 1), 20);
       expect(allowanceFor(cfg, 3), 24);
     });
 
     test('matches the docs/06 table at every act boundary', () {
-      expect(targetFor(cfg, 4), 195);
+      // The docs/06 2 table predates the re-steepening; these are the live
+      // numbers and that table is amended to match.
+      expect(targetFor(cfg, 4), 234);
       expect(allowanceFor(cfg, 4), 26);
-      expect(targetFor(cfg, 8), 477);
+      expect(targetFor(cfg, 8), 978);
       expect(allowanceFor(cfg, 8), 34);
-      expect(targetFor(cfg, 12), 1164);
+      expect(targetFor(cfg, 12), 4091);
       expect(allowanceFor(cfg, 12), 42);
     });
 
-    test('opens with a target a floor player clears comfortably', () {
-      // The simulation puts an unassisted player at ~158 per stage. Stage 1 is
-      // the tutorial stage: nobody should lose there.
-      expect(targetFor(cfg, 1), lessThan(130));
+    test('opens with the lowest target on the ladder', () {
+      // `baseTarget` dropped 100 -> 80 on 2026-11-12, because placing a block
+      // scores nothing now and a 0%-unlock player lives entirely on line
+      // bonus (docs/05 §10).
+      //
+      // The old claim here — "nobody should lose on stage 1" — no longer
+      // holds and is tracked rather than asserted: see the stage-1 safety
+      // measurement in `test/sim/gates_sim_test.dart` and docs/08 E6.
+      expect(targetFor(cfg, 1), 80);
+      expect(targetFor(cfg, 1), lessThan(targetFor(cfg, 2)));
     });
 
     test('is twelve stages, in three acts of four, faults at 4/8/12', () {
@@ -83,15 +98,18 @@ void main() {
       // 0.8 x 0.8 is not 0.64 plus two accumulated half-cents.
       expect(
         targetFor(cfg, 8, mods: const LadderModifiers(targetScale: 0.8)),
-        381,
+        783,
       );
-      expect(targetFor(cfg, 8), 477);
+      expect(targetFor(cfg, 8), 978);
     });
 
     test('Tight Budget scales both allowance and target', () {
       const thin = LadderModifiers(allowanceScale: 0.7, targetScale: 0.75);
       expect(allowanceFor(cfg, 4, mods: thin), (26 * 0.7).round());
-      expect(targetFor(cfg, 4, mods: thin), (195 * 0.75).round());
+      // The scale lands on the *unrounded* target, which is the whole point
+      // of scaling before rounding: writing it as `(241 * 0.75).round()` would
+      // quietly demand the rounding happen twice.
+      expect(targetFor(cfg, 4, mods: thin), 175);
     });
 
     test('never produces a zero allowance or a zero target', () {

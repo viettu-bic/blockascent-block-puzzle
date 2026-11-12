@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- LoomPalette.dark.background, lib/render/theme.dart. The window starts
+         on the night the game runs on, so launching it is not a white flash
+         followed by a dark board. -->
+    <color name="night">#FF14161C</color>
+</resources>
