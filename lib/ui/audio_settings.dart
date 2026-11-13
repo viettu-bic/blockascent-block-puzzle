@@ -30,9 +30,13 @@ List<Widget> audioToggles({
 }) {
   final p = palette;
 
+  // Three switches, three words, no descriptions (UX review 9.1). "A calm
+  // loop. Quieter than the effects on purpose" is a note about how the music
+  // was made; nobody decides whether to turn sound on by reading it. "Sound"
+  // became "Sound effects" because that is the only thing that tells it apart
+  // from "Music".
   Widget toggle({
     required String title,
-    required String subtitle,
     required bool value,
     required ValueChanged<bool> onToggle,
   }) =>
@@ -43,17 +47,12 @@ List<Widget> audioToggles({
           onChanged();
         },
         title: Text(title, style: TextStyle(color: p.ink)),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(color: p.inkMuted, fontSize: FontSize.label),
-        ),
         activeThumbColor: p.accent,
       );
 
   return [
     toggle(
       title: 'Music',
-      subtitle: 'A calm loop. Quieter than the effects on purpose',
       value: account.musicEnabled,
       onToggle: (v) {
         account.musicEnabled = v;
@@ -61,8 +60,7 @@ List<Widget> audioToggles({
       },
     ),
     toggle(
-      title: 'Sound',
-      subtitle: 'Clears, combo breaks and the end of a run',
+      title: 'Sound effects',
       value: account.sfxEnabled,
       onToggle: (v) {
         account.sfxEnabled = v;
@@ -71,7 +69,6 @@ List<Widget> audioToggles({
     ),
     toggle(
       title: 'Vibration',
-      subtitle: 'The same moments, felt instead of heard',
       value: account.hapticsEnabled,
       onToggle: (v) {
         account.hapticsEnabled = v;

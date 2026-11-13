@@ -102,12 +102,12 @@ reference/ts-tests/              its 79 passing tests + the simulation harness
 ```
 
 ```bash
-flutter test      # 389 tests, including the port-parity gate
+flutter test      # 466 tests, including the port-parity gate
 flutter analyze
 ```
 
 ```
-lib/ui/how_to_play_screen.dart   the FTUE — four rules, shown once on first launch
+lib/ui/how_to_play_screen.dart   the four rules, from the menu and the in-run "?"
 lib/ui/loadout_screen.dart       LoadoutPicker, a section of the shop
 lib/platform/sfx.dart            sound, four voices, fire-and-forget
 lib/platform/music.dart          two loops, switched at screen transitions

@@ -26,7 +26,8 @@
 
   "upgrades": {
     "_": "15,400 spools. Rebuilt 2026-11-12: these used to be seven small flat numbers (+1 value, +2 moves, one shield) and they are now STRUCTURAL - slots, charges, guarantees, allowance - because the shop's job under docs/08 B7 is to sell a player out of jams, and a flat +1 cannot do that.",
-    "_onAxis": "Every one of these reduces jam risk or buys the tempo to play around a bad board. That is deliberate: a first run dies to a jam 58% of the time, so what the player wants is liquidity, slots and escape valves. Score upgrades (the yarns) are still here and still matter, but they are no longer the whole shop.",
+    "_wording": "Added 2026-11-13 (UX review §7). Player-facing strings here say what the player GETS, in the words the rest of the game uses: a block is the piece, a cell is a square of the board. 'value' was never defined anywhere in the game, and with no yarn upgrade a placement scores nothing at all — so '+3 value' read as a small bonus on top of something, when it is in fact the whole of a placement's income. And a shield the player cannot price ('hold 3 shields') is 1,300 coins they will not spend.",
+ "_onAxis": "Every one of these reduces jam risk or buys the tempo to play around a bad board. That is deliberate: a first run dies to a jam 58% of the time, so what the player wants is liquidity, slots and escape valves. Score upgrades (the yarns) are still here and still matter, but they are no longer the whole shop.",
     "fourthTraySlot": { "cost": 2600, "effect": "a 4th block in the tray" },
     "loadoutSlot9": { "cost": 900, "effect": "pick 9 blocks for your set instead of 8" },
     "loadoutSlot10": { "cost": 1600, "effect": "pick 10 blocks for your set instead of 9" },
@@ -34,10 +35,10 @@
     "toolkit": { "cost": 1400, "effect": "two Eraser charges every level" },
     "openingAllowance": { "cost": 1000, "effect": "+5 moves on every level" },
     "openingRhythm": { "cost": 800, "effect": "every level starts at x2.0 combo or better" },
-    "startingSelvage": { "cost": 1300, "effect": "hold 3 shields, refilled every level" },
-    "fineYarn": { "cost": 600, "effect": "+3 value to 1- and 2-cell blocks" },
-    "standardYarn": { "cost": 1600, "effect": "+3 value to 3- and 4-cell blocks" },
-    "heavyYarn": { "cost": 1400, "effect": "+3 value to 5-cell and larger blocks" }
+    "startingSelvage": { "cost": 1300, "effect": "3 shields every level. A shield takes a combo break for you" },
+    "fineYarn": { "cost": 600, "effect": "+3 points per cell for 1–2 cell blocks" },
+    "standardYarn": { "cost": 1600, "effect": "+3 points per cell for 3–4 cell blocks" },
+    "heavyYarn": { "cost": 1400, "effect": "+3 points per cell for 5+ cell blocks" }
   },
 
   "_fourthSlotIsForSale": "docs/04 3 refused to sell a 4th tray slot: 'the single largest power swing in the game', it 'alters the refill-on-empty rule the whole difficulty rests on', it 'roughly halves jam risk'. Every one of those is true and all three are now REASONS TO SELL IT. Under docs/08 B7 halving jam risk is precisely what the shop is for, and the refill-on-empty rule is the difficulty the player is buying their way out of. Second Shuttle stays in the draft and stacks on top, so a drafted 5th slot is still a real pick.",

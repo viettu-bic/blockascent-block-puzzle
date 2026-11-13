@@ -28,6 +28,8 @@ class Account {
     this.sfxEnabled = true,
     this.musicEnabled = true,
     this.seenHowToPlay = false,
+    this.seenRotateHint = false,
+    this.jamsSeen = 0,
     this.runsStarted = 0,
     this.bestRunTotal = 0,
     this.wins = 0,
@@ -71,10 +73,28 @@ class Account {
   bool sfxEnabled;
   bool musicEnabled;
 
-  /// Whether the rules screen has been shown. It opens itself once, on the
-  /// first launch, which is what makes it an FTUE rather than a help page
-  /// nobody opens (docs/08 E2).
+  /// Whether the rules screen has been opened.
+  ///
+  /// It no longer opens itself: the first launch goes straight into a level 1
+  /// arranged to teach, and the rules live behind the menu card and the "?"
+  /// in the HUD (UX review 1.1). Kept for save compatibility, and because
+  /// "has this player ever read the rules" is still worth knowing.
   bool seenHowToPlay;
+
+  /// Whether the player has dismissed "Tap a block to rotate it".
+  ///
+  /// Rotation is the only control the game has that it never names anywhere,
+  /// so the hint appears the first time nothing in the tray fits unturned and
+  /// then never again (UX review 4.1).
+  bool seenRotateHint;
+
+  /// How many runs have ended in a jam.
+  ///
+  /// The board-level explanation ("No block fits these gaps") is a lesson, not
+  /// a readout, so it is shown on the first two jams and then the red cells
+  /// speak for themselves (UX review 5).
+  int jamsSeen;
+
   int runsStarted;
   int bestRunTotal;
   int wins;
@@ -176,6 +196,8 @@ class Account {
     'sfx': sfxEnabled,
     'music': musicEnabled,
     'seenHowToPlay': seenHowToPlay,
+    'seenRotateHint': seenRotateHint,
+    'jamsSeen': jamsSeen,
     'runsStarted': runsStarted,
     'bestRunTotal': bestRunTotal,
     'wins': wins,
@@ -215,6 +237,10 @@ class Account {
       // An existing save has already played, so do not interrupt it with a
       // tutorial it did not ask for.
       seenHowToPlay: (j['seenHowToPlay'] as bool?) ?? true,
+      // An existing save has placed blocks already, so it is not shown a
+      // first-time control hint it has no use for.
+      seenRotateHint: (j['seenRotateHint'] as bool?) ?? true,
+      jamsSeen: (j['jamsSeen'] as num?)?.toInt() ?? 0,
       runsStarted: (j['runsStarted'] as num?)?.toInt() ?? 0,
       bestRunTotal: (j['bestRunTotal'] as num?)?.toInt() ?? 0,
       wins: (j['wins'] as num?)?.toInt() ?? 0,

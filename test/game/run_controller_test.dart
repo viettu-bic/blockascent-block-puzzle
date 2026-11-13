@@ -32,8 +32,17 @@ void main() {
   ({RunController c, Account a, MemoryStorage s}) build({
     Account? account,
     int seed = 1,
+    bool firstInstall = false,
   }) {
     final a = account ?? Account();
+    // Every run here is an ordinary one unless a test says otherwise.
+    //
+    // A literal first install (`runsStarted == 0`) gets a level 1 pre-arranged
+    // to teach — a nearly-complete column and a hint at the block that
+    // finishes it (`RunController._arrangeOpeningLesson`). That is the right
+    // thing for a person and the wrong board to assert sequencing, scoring or
+    // a gate against, so it is opt-in here.
+    if (!firstInstall && a.runsStarted == 0) a.runsStarted = 1;
     final s = MemoryStorage();
     final c = RunController(
       tuning: tuning,
@@ -79,6 +88,16 @@ void main() {
       spoolsBanked: 9000,
     ),
   );
+
+  /// Answer the act's challenge screen, if the game is asking.
+  ///
+  /// With one unlocked option the controller takes it rather than putting up a
+  /// screen with a single answer on it, so a run may already be placing.
+  void takeFirstFault(RunController c) {
+    if (c.phase == GamePhase.faultChoice) {
+      c.chooseFault(c.faultOptions.first.id);
+    }
+  }
 
   /// Drive the controller with the greedy player until the run ends.
   ///
@@ -127,7 +146,9 @@ void main() {
     test('opens by announcing act 1 faults, not by placing', () {
       // The act's options are announced when the act begins, so the player can
       // draft toward the one they chose.
-      final t = build();
+      final t = build(account: Account(runsStarted: 1, faultsCleared: {
+        'thin_place',
+      }));
       t.c.begin();
       expect(t.c.phase, GamePhase.faultChoice);
       expect(t.c.faultOptions, isNotEmpty);
@@ -135,26 +156,41 @@ void main() {
       expect(t.c.tray.every((s) => s == null), isTrue);
     });
 
-    test('a fresh account sees all three faults, but can only pick one', () {
+    test('all three faults are shown, and only the unlocked ones pickable', () {
       // All three are *shown*: a ladder the player cannot see is not a ladder,
       // and a locked row tells them what they are working toward. Only the
-      // unlocked one is selectable (docs/06 §6a).
-      final t = build();
+      // unlocked ones are selectable (docs/06 §6a).
+      final t = build(account: Account(runsStarted: 1, faultsCleared: {
+        'thin_place',
+      }));
       t.c.begin();
       expect(t.c.faultOptions, hasLength(3));
-      expect(t.c.lockedFaultIds, hasLength(2));
-      expect(
-        t.c.faultOptions.where((f) => !t.c.lockedFaultIds.contains(f.id)).single.tier,
-        1,
-      );
+      expect(t.c.lockedFaultIds, hasLength(1));
       // And the hint names what unlocks each locked one.
-      final tier2 = t.c.faultOptions.firstWhere((f) => f.tier == 2);
-      expect(t.c.unlockedBy(tier2.id)?.tier, 1);
+      final tier3 = t.c.faultOptions.firstWhere((f) => f.tier == 3);
+      expect(t.c.unlockedBy(tier3.id)?.tier, 2);
       expect(t.c.unlockedBy(t.c.faultOptions.first.id), isNull);
     });
 
+    test('a sole unlocked fault is taken rather than asked about', () {
+      // A fresh account has exactly one selectable fault per act, so the screen
+      // was a question with one answer — asked before a block had been placed,
+      // about a level the player would not reach for three more (UX review 3).
+      //
+      // Nothing is narrowed by this (invariant 5): the locked options are
+      // locked either way, and the chosen fault still lands on level 4.
+      final t = build(account: Account(runsStarted: 1));
+      t.c.begin();
+      expect(t.c.phase, GamePhase.placing);
+      expect(t.c.chosenFaultByAct[1], 'thin_place');
+      expect(t.c.faultOptions, isEmpty);
+      expect(t.c.tray.every((s) => s != null), isTrue);
+    });
+
     test('a locked fault cannot be chosen, even if something taps it', () {
-      final t = build();
+      final t = build(account: Account(runsStarted: 1, faultsCleared: {
+        'thin_place',
+      }));
       t.c.begin();
       final locked = t.c.lockedFaultIds.first;
       t.c.chooseFault(locked);
@@ -162,9 +198,37 @@ void main() {
       expect(t.c.chosenFaultByAct, isEmpty);
     });
 
+    test('the first run ever is arranged to teach, and only that one', () {
+      // Level 1 of a first install starts with a nearly-complete column and a
+      // hint at the block that finishes it, which is how the game now teaches
+      // that both axes clear (UX review 1.1). It is not a head start the
+      // player keeps getting.
+      final t = build(firstInstall: true);
+      t.c.begin();
+      expect(t.c.tutorialRun, isTrue);
+      expect(t.c.phase, GamePhase.placing);
+      expect(countFilled(t.c.board), greaterThan(0));
+
+      final hint = t.c.openingHint;
+      expect(hint, isNotNull);
+      final item = t.c.tray[hint!.slot]!;
+      expect(t.c.canPlace(item, hint.anchor), isTrue);
+      expect(
+        t.c.previewFor(item, hint.anchor).isNotEmpty,
+        isTrue,
+        reason: 'the hinted move finishes a line',
+      );
+
+      // The second run is an ordinary one.
+      t.c.begin();
+      expect(t.c.tutorialRun, isFalse);
+      expect(countFilled(t.c.board), 0);
+      expect(t.c.openingHint, isNull);
+    });
+
     test('clearing a fault unlocks the next tier, and only the next', () {
       // All three are always shown; what changes is which are locked.
-      final a = Account(faultsCleared: {'thin_place'});
+      final a = Account(runsStarted: 1, faultsCleared: {'thin_place'});
       final t = build(account: a);
       t.c.begin();
       expect(t.c.faultOptions, hasLength(3));
@@ -175,23 +239,29 @@ void main() {
         [1, 2],
       );
 
-      final b = Account(faultsCleared: {'thin_place', 'reediness'});
+      final b = Account(
+        runsStarted: 1,
+        faultsCleared: {'thin_place', 'reediness'},
+      );
       final u = build(account: b);
       u.c.begin();
       expect(u.c.lockedFaultIds, isEmpty);
 
       // Clearing act 2's tier 1 does nothing for act 1, and vice versa: the
-      // ladder is per act, so progress cannot leak sideways.
-      final c = Account(faultsCleared: {'fixed_heddles'});
+      // ladder is per act, so progress cannot leak sideways. With only one
+      // act-1 option selectable it is taken rather than asked about, so the
+      // assertion is on what act 1 offered, not on a screen.
+      final c = Account(runsStarted: 1, faultsCleared: {'fixed_heddles'});
       final v = build(account: c);
       v.c.begin();
-      expect(v.c.lockedFaultIds, hasLength(2));
+      expect(v.c.phase, GamePhase.placing);
+      expect(v.c.chosenFaultByAct[1], 'thin_place');
     });
 
     test('clearing the fault stage banks it on the account', () {
       final t = build(account: maxedAccount()..faultsCleared.clear());
       t.c.begin();
-      t.c.chooseFault(t.c.faultOptions.first.id);
+      takeFirstFault(t.c);
       playOut(t.c);
       // A run that reached stage 4 and cleared it has beaten one fault; a run
       // that died before stage 4 has beaten none. Either is fine — what must
@@ -204,9 +274,11 @@ void main() {
     });
 
     test('choosing the fault starts stage 1 with a full tray', () {
-      final t = build();
+      final t = build(account: Account(runsStarted: 1, faultsCleared: {
+        'thin_place',
+      }));
       t.c.begin();
-      t.c.chooseFault(t.c.faultOptions.first.id);
+      takeFirstFault(t.c);
       expect(t.c.phase, GamePhase.placing);
       expect(t.c.ladder.stage, 1);
       expect(t.c.tray, hasLength(3));
@@ -257,6 +329,94 @@ void main() {
         t.c.account.loadoutShapes().every((s) => s.tier == 1),
         isTrue,
       );
+    });
+  });
+
+  group('what the player is told', () {
+    test('a dry placement spends a pip and says so', () {
+      // The HUD animates the *event*, not the value: patience also refills at
+      // a stage boundary, where nothing was lost (UX review 4.3).
+      final t = build();
+      t.c.begin();
+      final before = t.c.patienceLossTick;
+
+      // Somewhere no line can complete on the opening board.
+      final slot = t.c.tray.indexWhere((i) => i != null);
+      expect(t.c.place(slot, const Anchor(0, 0)), isTrue);
+
+      expect(t.c.ladder.score.patience, lessThan(t.c.scoring.patienceMax));
+      expect(t.c.patienceLossTick, before + 1);
+      expect(t.c.comboBreakTick, 0, reason: 'a pip is not a break');
+    });
+
+    test('a jam names the gaps before the run ends', () {
+      // A jam is 43% of early deaths and the summary named neither the rule
+      // nor the place. Every empty cell of a jammed board is one no block
+      // fits, so there is no heuristic here to get wrong (UX review 5).
+      final t = build();
+      t.c.begin();
+
+      // Tier 1 only, so nothing in the bag is under three cells: a board that
+      // is full but for two isolated single cells cannot be played.
+      var b = createBoard();
+      for (var y = 0; y < b.h; y++) {
+        for (var x = 0; x < b.w; x++) {
+          if ((x == 0 && y == 0) || (x == 7 && y == 7)) continue;
+          b = setCell(b, x, y, 3);
+        }
+      }
+      t.c.board = b;
+
+      t.c.powers = t.c.powers.plus(const PickedPower('rethread'));
+      t.c.toolCharges['rethread'] = 1;
+      t.c.rethread();
+
+      expect(t.c.phase, GamePhase.lost);
+      expect(t.c.ladder.lossReason, LossReason.jam);
+      expect(t.c.jamCells, unorderedEquals(const <Coord>[(0, 0), (7, 7)]));
+      expect(t.a.jamsSeen, 1);
+    });
+
+    test('a near miss says how near', () {
+      // "Out of moves" was true and useless: it named the mechanism, not the
+      // margin, so three points short read exactly like three hundred short
+      // (UX review 5.1).
+      final t = build();
+      t.c.begin();
+      t.c.ladder = t.c.ladder.copyWith(
+        stageScore: t.c.ladder.target - 3,
+        phase: RunPhase.lost,
+        lossReason: LossReason.target,
+      );
+      expect(t.c.lossHeadline, '3 points short');
+      expect(t.c.lossWasOnScore, isTrue);
+    });
+
+    test('rotation is only pointed out when it is the answer', () {
+      // The one control the game never names anywhere (UX review 4.1).
+      final t = build();
+      t.c.begin();
+      expect(
+        t.c.needsRotation,
+        isFalse,
+        reason: 'an open board needs no advice',
+      );
+
+      // A board with one free column: a wide block only fits turned.
+      var b = createBoard();
+      for (var y = 0; y < b.h; y++) {
+        for (var x = 0; x < b.w - 1; x++) {
+          b = setCell(b, x, y, 3);
+        }
+      }
+      t.c.board = b;
+      final wide = shape('i3').rotations
+          .indexWhere((f) => extent(f).w > extent(f).h);
+      t.c.tray = [TrayItem('i3', wide), null, null];
+      expect(t.c.needsRotation, isTrue);
+
+      t.c.rotate(0);
+      expect(t.c.needsRotation, isFalse);
     });
   });
 
@@ -433,7 +593,7 @@ void main() {
         }
         switch (t.c.phase) {
           case GamePhase.faultChoice:
-            t.c.chooseFault(t.c.faultOptions.first.id);
+            takeFirstFault(t.c);
           case GamePhase.draft:
             t.c.takeDraftCard(t.c.draftOptions.first);
           case GamePhase.motifChoice:
@@ -779,7 +939,7 @@ void main() {
       // door, and only reachable by backgrounding the app mid-run.
       final t = build(seed: 31);
       t.c.begin();
-      t.c.chooseFault(t.c.faultOptions.first.id);
+      takeFirstFault(t.c);
       while (t.c.phase == GamePhase.placing) {
         final move = bestMove(t.c.board, t.c.tray);
         if (move == null) break;
@@ -979,7 +1139,7 @@ void main() {
         switch (t.c.phase) {
           case GamePhase.faultChoice:
             faultActsAsked.add(t.c.faultOptions.first.act);
-            t.c.chooseFault(t.c.faultOptions.first.id);
+            takeFirstFault(t.c);
           case GamePhase.draft:
             drafts++;
             t.c.takeDraftCard(t.c.draftOptions.first);

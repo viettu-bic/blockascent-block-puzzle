@@ -1,6 +1,8 @@
 /// The play screen: HUD on top, board above the tray, overlays over both.
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../game/run_controller.dart';
@@ -8,6 +10,7 @@ import '../platform/music.dart';
 import '../render/theme.dart';
 import 'audio_settings.dart';
 import 'board_widget.dart';
+import 'how_to_play_screen.dart';
 import 'hud.dart';
 import 'overlays.dart';
 import 'widgets.dart';
@@ -36,25 +39,101 @@ class GameScreen extends StatefulWidget {
   State<GameScreen> createState() => _GameScreenState();
 }
 
+/// How long the jammed cells stay on screen before the summary covers them.
+///
+/// Long enough to look at a board and see that nothing fits, short enough that
+/// it is not a wait. Designed, not measured — what would settle it is watching
+/// someone jam twice.
+const Duration jamRevealHold = Duration(seconds: 2);
+
+/// How long the board has to sit untouched-and-unfitting before the game says
+/// out loud that blocks turn.
+///
+/// Not instant: a player who is about to find rotation themselves should be
+/// allowed to, and a tip that arrives before you have had a chance to think is
+/// read as noise.
+const Duration rotateHintDelay = Duration(seconds: 5);
+
 class _GameScreenState extends State<GameScreen> {
   RunController get c => widget.controller;
   LoomPalette get p => widget.palette;
+
+  /// Holds the summary back while the jammed cells are shown.
+  Timer? _jamTimer;
+  bool _holdJamReveal = false;
+  bool _jamRevealed = false;
+
+  /// Delays the rotation hint bar.
+  Timer? _rotateTimer;
+  bool _showRotateHint = false;
 
   @override
   void initState() {
     super.initState();
     c.addListener(_rebuild);
+    _syncJamReveal();
+    _syncRotateHint();
   }
 
   @override
   void dispose() {
     c.removeListener(_rebuild);
+    _jamTimer?.cancel();
+    _rotateTimer?.cancel();
     super.dispose();
   }
 
   void _rebuild() {
-    if (mounted) setState(() {});
+    if (!mounted) return;
+    _syncJamReveal();
+    _syncRotateHint();
+    setState(() {});
   }
+
+  /// Show the gaps, then the summary (UX review 5).
+  ///
+  /// A jam used to go straight to a panel reading "No moves left" over a board
+  /// the player could no longer see — 43% of early deaths, explained by
+  /// nothing, at the exact moment the player wants to know why. Only a jam
+  /// does this: running out of moves needs no board.
+  void _syncJamReveal() {
+    final jammed = c.phase == GamePhase.lost && c.jamCells.isNotEmpty;
+    if (!jammed) {
+      _jamTimer?.cancel();
+      _jamTimer = null;
+      _holdJamReveal = false;
+      _jamRevealed = false;
+      return;
+    }
+    if (_jamRevealed || _holdJamReveal) return;
+    _holdJamReveal = true;
+    _jamTimer = Timer(jamRevealHold, () {
+      if (!mounted) return;
+      setState(() {
+        _holdJamReveal = false;
+        _jamRevealed = true;
+      });
+    });
+  }
+
+  void _syncRotateHint() {
+    final wanted = c.phase == GamePhase.placing &&
+        c.needsRotation &&
+        !c.account.seenRotateHint;
+    if (!wanted) {
+      _rotateTimer?.cancel();
+      _rotateTimer = null;
+      _showRotateHint = false;
+      return;
+    }
+    if (_showRotateHint || _rotateTimer != null) return;
+    _rotateTimer = Timer(rotateHintDelay, () {
+      if (!mounted) return;
+      setState(() => _showRotateHint = true);
+    });
+  }
+
+  void _openHelp() => showHowToPlaySheet(context, palette: p);
 
   void _openSettings() {
     showModalBottomSheet<void>(
@@ -84,8 +163,11 @@ class _GameScreenState extends State<GameScreen> {
               // on this sheet, and it should not look like another setting.
               LoomButton(
                 palette: p,
-                label: 'Quit this run',
-                subtitle: 'The coins earned so far are kept',
+                // Was "Quit this run" / "The coins earned so far are kept".
+                // Shorter, and it answers the thing a player actually worries
+                // about when they reach for this button (UX review 9.2).
+                label: 'Quit run',
+                subtitle: 'You keep your coins',
                 icon: Icons.logout,
                 onPressed: () {
                   Navigator.of(context).pop();
@@ -146,8 +228,7 @@ class _GameScreenState extends State<GameScreen> {
           style: TextStyle(color: p.ink, fontSize: FontSize.heading),
         ),
         content: Text(
-          'Level ${c.ladder.stage} ends here. The coins you have '
-          'earned are kept.',
+          'Level ${c.ladder.stage} ends here. You keep your coins.',
           style: TextStyle(color: p.inkMuted, fontSize: FontSize.bodySm),
         ),
         actions: [
@@ -212,6 +293,7 @@ class _GameScreenState extends State<GameScreen> {
                             controller: c,
                             palette: p,
                             onSettings: _openSettings,
+                            onHelp: _openHelp,
                           ),
                           NextRefillStrip(controller: c, palette: p),
                           HoldIndicator(controller: c, palette: p),
@@ -236,49 +318,56 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ],
               ),
+              if (_holdJamReveal && c.account.jamsSeen <= 2)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _BottomBanner(
+                    palette: p,
+                    background: p.warn,
+                    foreground: p.ink,
+                    icon: Icons.block,
+                    // Named twice and then never again: by the third jam the
+                    // red cells say it on their own, and a game that keeps
+                    // explaining a rule you have learned is nagging.
+                    label: 'No block fits these gaps',
+                  ),
+                ),
+              if (_showRotateHint && c.aiming == ToolAim.none)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: _BottomBanner(
+                    palette: p,
+                    background: p.accent,
+                    foreground: p.onAccent,
+                    icon: Icons.rotate_right,
+                    label: 'Tap a block to rotate it',
+                    actionLabel: 'Got it',
+                    onAction: () {
+                      c.markRotateHintSeen();
+                      setState(() => _showRotateHint = false);
+                    },
+                  ),
+                ),
               if (c.aiming != ToolAim.none)
                 Positioned(
                   left: 0,
                   right: 0,
                   bottom: 0,
-                  child: Material(
-                    color: p.accent,
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(
-                        Space.lg,
-                        Space.sm,
-                        Space.sm,
-                        Space.sm,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _aimHint(c.aiming),
-                              style: TextStyle(
-                                color: p.onAccent,
-                                fontWeight: FontWeight.w600,
-                                fontSize: FontSize.bodySm,
-                              ),
-                            ),
-                          ),
-                          // An armed tool must always have a way out — the
-                          // `escape-routes` rule, and the difference between a
-                          // mis-tap and a wasted charge.
-                          TextButton(
-                            onPressed: c.cancelAim,
-                            style: TextButton.styleFrom(
-                              foregroundColor: p.onAccent,
-                              minimumSize: const Size(
-                                minTapTarget,
-                                minTapTarget,
-                              ),
-                            ),
-                            child: const Text('Cancel'),
-                          ),
-                        ],
-                      ),
-                    ),
+                  child: _BottomBanner(
+                    palette: p,
+                    background: p.accent,
+                    foreground: p.onAccent,
+                    icon: Icons.ads_click,
+                    label: _aimHint(c.aiming),
+                    // An armed tool must always have a way out — the
+                    // `escape-routes` rule, and the difference between a
+                    // mis-tap and a wasted charge.
+                    actionLabel: 'Cancel',
+                    onAction: c.cancelAim,
                   ),
                 ),
               if (c.phase == GamePhase.faultChoice)
@@ -293,7 +382,8 @@ class _GameScreenState extends State<GameScreen> {
                 Positioned.fill(
                   child: MotifChoiceOverlay(controller: c, palette: p),
                 ),
-              if (c.phase == GamePhase.lost || c.phase == GamePhase.won)
+              if ((c.phase == GamePhase.lost || c.phase == GamePhase.won) &&
+                  !_holdJamReveal)
                 Positioned.fill(
                   child: SummaryOverlay(
                     controller: c,
@@ -317,4 +407,72 @@ class _GameScreenState extends State<GameScreen> {
     ToolAim.battenCol => 'Tap a column to clear it',
     ToolAim.none => '',
   };
+}
+
+/// The strip along the bottom of the play screen: one line and at most one
+/// button.
+///
+/// Three things use it -- an armed tool, the rotation hint and the jam
+/// explanation -- and they were three different hand-rolled rows before, which
+/// is three chances for one of them to be the wrong height or to lose its
+/// escape route.
+class _BottomBanner extends StatelessWidget {
+  const _BottomBanner({
+    required this.palette,
+    required this.background,
+    required this.foreground,
+    required this.icon,
+    required this.label,
+    this.actionLabel,
+    this.onAction,
+  });
+
+  final LoomPalette palette;
+  final Color background;
+  final Color foreground;
+  final IconData icon;
+  final String label;
+  final String? actionLabel;
+  final VoidCallback? onAction;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: background,
+    child: SafeArea(
+      top: false,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Space.lg,
+          Space.sm,
+          Space.sm,
+          Space.sm,
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: foreground),
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                  fontSize: FontSize.bodySm,
+                ),
+              ),
+            ),
+            if (actionLabel != null)
+              TextButton(
+                onPressed: onAction,
+                style: TextButton.styleFrom(
+                  foregroundColor: foreground,
+                  minimumSize: const Size(minTapTarget, minTapTarget),
+                ),
+                child: Text(actionLabel!),
+              ),
+          ],
+        ),
+      ),
+    ),
+  );
 }

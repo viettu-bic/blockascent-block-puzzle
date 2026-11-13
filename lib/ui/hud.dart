@@ -12,6 +12,8 @@
 /// visible: a stage you cannot see the end of is a stage you cannot plan.
 library;
 
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../core/run.dart';
@@ -26,11 +28,17 @@ class Hud extends StatelessWidget {
     required this.controller,
     required this.palette,
     required this.onSettings,
+    required this.onHelp,
   });
 
   final RunController controller;
   final LoomPalette palette;
   final VoidCallback onSettings;
+
+  /// Opens the rules over the run, without ending it. The gear is settings and
+  /// the menu abandons the run, so a player who forgot a rule mid-run had
+  /// nowhere at all to look (UX review 4.5).
+  final VoidCallback onHelp;
 
   @override
   Widget build(BuildContext context) {
@@ -65,19 +73,26 @@ class Hud extends StatelessWidget {
                   ),
                 ),
               ),
-              // The run total lives here, not beside the multiplier. On a
-              // 360dp screen it was jammed hard against "RHYTHM" and the two
-              // read as one word — and a run-level number belongs with the
-              // other run-level numbers anyway, not competing with the hero.
-              Text(
-                'total ${formatScore(l.score.total)}',
-                style: TextStyle(
+              // The run total is gone from the play screen (UX review 4.2).
+              // Two score numbers were on screen at once — "10 / 80" for the
+              // level and "total 10" for the run — and nothing said which was
+              // which; a new player reads the smaller one as a mistake. A run
+              // total is a number for the end of a run, and the summary
+              // already shows it.
+              IconButton(
+                onPressed: onHelp,
+                tooltip: 'How to play',
+                icon: Icon(
+                  Icons.help_outline,
+                  size: 20,
                   color: palette.inkMuted,
-                  fontSize: FontSize.label,
-                  fontFeatures: const [FontFeature.tabularFigures()],
+                  semanticLabel: 'How to play',
+                ),
+                constraints: const BoxConstraints(
+                  minWidth: minTapTarget,
+                  minHeight: minTapTarget,
                 ),
               ),
-              const SizedBox(width: Space.xs),
               // Icon-only, so it needs a name: "Settings" is what a screen
               // reader and a long-press tooltip both announce. The 32x32 box
               // it used to carry was under both platform minimums.
@@ -243,16 +258,26 @@ class Hud extends StatelessWidget {
                       palette: palette,
                       patience: l.score.patience,
                       max: c.scoring.patienceMax,
+                      lossTick: c.patienceLossTick,
                     ),
                     const SizedBox(height: Space.xs),
-                    Text(
-                      'COMBO',
-                      maxLines: 1,
-                      overflow: TextOverflow.clip,
-                      style: TextStyle(
-                        color: palette.inkMuted,
-                        fontSize: FontSize.micro,
-                        letterSpacing: 1.2,
+                    // "COMBO" until the combo actually breaks, then "Combo
+                    // lost" for a second. Losing it was silent except for the
+                    // hero number dropping, which is the one part of the HUD a
+                    // player is not looking at while they drag a block
+                    // (UX review 4.3).
+                    ComboBreakFlash(
+                      palette: palette,
+                      breakTick: c.comboBreakTick,
+                      child: Text(
+                        'COMBO',
+                        maxLines: 1,
+                        overflow: TextOverflow.clip,
+                        style: TextStyle(
+                          color: palette.inkMuted,
+                          fontSize: FontSize.micro,
+                          letterSpacing: 1.2,
+                        ),
                       ),
                     ),
                   ],
@@ -299,36 +324,164 @@ class Hud extends StatelessWidget {
   }
 }
 
-class _PatiencePips extends StatelessWidget {
+/// The patience pips: how many more moves without a clear the combo survives.
+///
+/// Spending one used to change a dark dot to a slightly darker dot, with no
+/// motion and no colour, in the corner of a screen whose centre is a board the
+/// player is dragging on. The pip that was just spent now turns warn-coloured
+/// and the strip shakes once, so the cost registers at the moment it is paid
+/// (UX review 4.3).
+class _PatiencePips extends StatefulWidget {
   const _PatiencePips({
     required this.palette,
     required this.patience,
     required this.max,
+    required this.lossTick,
   });
 
   final LoomPalette palette;
   final int patience;
   final int max;
 
+  /// Bumped by the controller every time a pip is spent. A tick rather than a
+  /// value comparison: the pips refill at a stage boundary too, and only a
+  /// loss should animate.
+  final int lossTick;
+
   @override
-  Widget build(BuildContext context) => Row(
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      for (var i = 0; i < max; i++)
-        Padding(
-          padding: const EdgeInsets.only(right: Space.xs),
-          child: Container(
-            width: 8,
-            height: 8,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: i < patience ? palette.ink : palette.emptyCell,
-              border: Border.all(color: palette.gridLine),
-            ),
-          ),
-        ),
-    ],
+  State<_PatiencePips> createState() => _PatiencePipsState();
+}
+
+class _PatiencePipsState extends State<_PatiencePips>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _shake = AnimationController(
+    vsync: this,
+    duration: Motion.quick,
+    value: 1,
   );
+
+  @override
+  void didUpdateWidget(_PatiencePips old) {
+    super.didUpdateWidget(old);
+    if (widget.lossTick == old.lossTick) return;
+    if (reduceMotionOf(context)) {
+      // The colour is the information; the shake is only the attention-getter,
+      // so under reduce-motion the mark still appears and still clears itself.
+      _shake.value = 0;
+      Future<void>.delayed(Motion.quick * 4, () {
+        if (mounted) _shake.value = 1;
+      });
+    } else {
+      _shake.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _shake.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = widget.palette;
+    return AnimatedBuilder(
+      animation: _shake,
+      builder: (context, child) {
+        final t = _shake.value;
+        // Three decaying swings that finish exactly where they started, so
+        // nothing around the strip is nudged.
+        final dx = t >= 1 ? 0.0 : 3.0 * (1 - t) * math.sin(t * math.pi * 6);
+        return Transform.translate(offset: Offset(dx, 0), child: child);
+      },
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (var i = 0; i < widget.max; i++)
+            Padding(
+              padding: const EdgeInsets.only(right: Space.xs),
+              child: AnimatedBuilder(
+                animation: _shake,
+                builder: (context, _) {
+                  final spent = i >= widget.patience;
+                  // Only the pip that just went is marked, never every empty
+                  // one: the message is "you just lost one", not "you have
+                  // lost some".
+                  final justSpent = i == widget.patience && _shake.value < 1;
+                  return Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color:
+                          justSpent ? p.warn : (spent ? p.emptyCell : p.ink),
+                      border: Border.all(
+                        color: justSpent ? p.warn : p.gridLine,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Swaps the "COMBO" caption for "Combo lost" for a second when it breaks.
+///
+/// A break is the most expensive thing that happens in a run and it had no
+/// announcement at all: the hero number simply read a smaller value next time
+/// the player looked at it, with nothing to say when or why it changed.
+class ComboBreakFlash extends StatefulWidget {
+  const ComboBreakFlash({
+    super.key,
+    required this.palette,
+    required this.breakTick,
+    required this.child,
+  });
+
+  final LoomPalette palette;
+  final int breakTick;
+
+  /// The resting caption.
+  final Widget child;
+
+  @override
+  State<ComboBreakFlash> createState() => _ComboBreakFlashState();
+}
+
+class _ComboBreakFlashState extends State<ComboBreakFlash> {
+  static const Duration _hold = Duration(milliseconds: 1000);
+
+  bool _lost = false;
+
+  @override
+  void didUpdateWidget(ComboBreakFlash old) {
+    super.didUpdateWidget(old);
+    if (widget.breakTick == old.breakTick) return;
+    setState(() => _lost = true);
+    Future<void>.delayed(_hold, () {
+      if (mounted) setState(() => _lost = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_lost) return widget.child;
+    return Text(
+      'Combo lost',
+      maxLines: 1,
+      overflow: TextOverflow.clip,
+      style: TextStyle(
+        color: widget.palette.warnInk,
+        fontSize: FontSize.micro,
+        letterSpacing: 0.6,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
 }
 
 /// The charged tools a run has drafted: Eraser, Bomb, Reshuffle, Swap Tray,
@@ -346,10 +499,21 @@ class _PatiencePips extends StatelessWidget {
 /// cannot see is a card they paid a pick for and will never spend. Anything
 /// the player *acts on* belongs outside a scrollable; readouts can scroll.
 ///
-/// It renders nothing at all when there is nothing to show, so the board keeps
-/// the space until a tool is actually drafted.
+/// **It holds its height even while it is empty.** It used to collapse to
+/// nothing until a tool was drafted, which sounds like the thrifty choice and
+/// is not: Eraser arrives from the level-2 draft, so on the first draft of
+/// every run the row appears and pushes the entire board down by its height
+/// (~40px on a 1080x2400 phone), mid-run, between one placement and the next.
+/// A player aiming at a cell they had been looking at for a minute now misses
+/// it. The board is a touch target the thumb has calibrated against; the price
+/// of moving it is far higher than the price of reserving the space
+/// (UX review 4.4).
 class ToolRow extends StatelessWidget {
   const ToolRow({super.key, required this.controller, required this.palette});
+
+  /// The height the row keeps whether or not it has anything in it: a
+  /// [minTapTarget] chip plus this widget's own vertical padding.
+  static const double reservedHeight = minTapTarget + 4 + 6;
 
   final RunController controller;
   final LoomPalette palette;
@@ -358,7 +522,9 @@ class ToolRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = controller;
     final buttons = _buttons(c);
-    if (buttons.isEmpty) return const SizedBox.shrink();
+    if (buttons.isEmpty) {
+      return const SizedBox(height: reservedHeight, width: double.infinity);
+    }
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 10, 6),
       // Horizontal, so a wide set of tools at a large text scale runs off the

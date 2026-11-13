@@ -62,6 +62,10 @@ class BoardView {
     this.settleCells = const [],
     this.rotationDisabled = false,
     this.toolTarget,
+    this.jamCells = const [],
+    this.hintCells = const [],
+    this.rotateHint = false,
+    this.rotateHintT = 0,
   });
 
   final Board board;
@@ -98,6 +102,22 @@ class BoardView {
   /// A cell or 2×2 area a tool is aimed at (Unpick, Shears).
   final Anchor? toolTarget;
 
+  /// The empty cells of a board that has just jammed, named before the summary
+  /// covers them. A loss only reads as a consequence if the player can see
+  /// what caused it.
+  final List<Coord> jamCells;
+
+  /// Where the opening block of a first run goes. The one piece of hand-holding
+  /// in the game, and it is gone after the first placement.
+  final List<Coord> hintCells;
+
+  /// Nothing in the tray fits unturned: wobble the tray blocks that have more
+  /// than one rotation and mark their pips.
+  final bool rotateHint;
+
+  /// 0..1, driven by a repeating controller in the widget.
+  final double rotateHintT;
+
   @override
   bool operator ==(Object other) =>
       other is BoardView &&
@@ -116,7 +136,11 @@ class BoardView {
       other.settleT == settleT &&
       other.settleCells.length == settleCells.length &&
       other.rotationDisabled == rotationDisabled &&
-      other.toolTarget == toolTarget;
+      other.toolTarget == toolTarget &&
+      other.jamCells.length == jamCells.length &&
+      other.hintCells.length == hintCells.length &&
+      other.rotateHint == rotateHint &&
+      other.rotateHintT == rotateHintT;
 
   @override
   int get hashCode => Object.hash(
@@ -131,6 +155,10 @@ class BoardView {
     settleT,
     rotationDisabled,
     toolTarget,
+    jamCells.length,
+    hintCells.length,
+    rotateHint,
+    rotateHintT,
     Object.hashAll(tray),
   );
 
@@ -164,6 +192,8 @@ class BoardPainter extends CustomPainter {
     _paintChrome(canvas, size);
     _paintPreviewBands(canvas);
     _paintCells(canvas);
+    _paintOpeningHint(canvas);
+    _paintJamCells(canvas);
     _paintGhost(canvas);
     _paintClearFlash(canvas);
     _paintTray(canvas);
@@ -273,6 +303,46 @@ class BoardPainter extends CustomPainter {
           );
         }
       }
+    }
+  }
+
+  /// Where the opening block of a first run goes.
+  ///
+  /// A dashed accent outline on the empty cells it will fill, drawn under
+  /// nothing: it is the only instruction the first run gets, and it is gone the
+  /// moment a block is placed.
+  void _paintOpeningHint(Canvas canvas) {
+    if (view.hintCells.isEmpty) return;
+    final fill = Paint()..color = p.accent.withValues(alpha: 0.18);
+    final edge = Paint()
+      ..color = p.accent.withValues(alpha: 0.85)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2;
+    for (final (x, y) in view.hintCells) {
+      final r = l.cellRect(x, y).deflate(2);
+      final rr = RRect.fromRectAndRadius(r, Radius.circular(_radius));
+      canvas.drawRRect(rr, fill);
+      canvas.drawRRect(rr, edge);
+    }
+  }
+
+  /// The gaps that ended the run.
+  ///
+  /// Every empty cell of a jammed board is one no block fits, so this needs no
+  /// heuristic and cannot point at the wrong cell. Filled rather than merely
+  /// outlined, because it has about two seconds to be read.
+  void _paintJamCells(Canvas canvas) {
+    if (view.jamCells.isEmpty) return;
+    final fill = Paint()..color = p.warn.withValues(alpha: 0.42);
+    final edge = Paint()
+      ..color = p.warn
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+    for (final (x, y) in view.jamCells) {
+      final r = l.cellRect(x, y).deflate(1.5);
+      final rr = RRect.fromRectAndRadius(r, Radius.circular(_radius));
+      canvas.drawRRect(rr, fill);
+      canvas.drawRRect(rr, edge);
     }
   }
 
@@ -500,7 +570,22 @@ class BoardPainter extends CustomPainter {
       final item = view.tray[i];
       if (item == null) continue;
       if (i == view.heldSlot) continue;
-      _paintPieceInRect(canvas, l.slots[i], item);
+      // The wobble says "this thing turns" in the one place the player is
+      // already looking. Only blocks that actually have another rotation
+      // move, so the hint never lies about a square.
+      final turnable = shape(item.shapeId).rotations.length > 1;
+      if (view.rotateHint && turnable && !view.rotationDisabled) {
+        final slot = l.slots[i];
+        final angle = 0.075 * math.sin(view.rotateHintT * 2 * math.pi);
+        canvas.save();
+        canvas.translate(slot.center.dx, slot.center.dy);
+        canvas.rotate(angle);
+        canvas.translate(-slot.center.dx, -slot.center.dy);
+        _paintPieceInRect(canvas, slot, item);
+        canvas.restore();
+      } else {
+        _paintPieceInRect(canvas, l.slots[i], item);
+      }
     }
   }
 
@@ -555,8 +640,13 @@ class BoardPainter extends CustomPainter {
           Paint()
             ..color = view.rotationDisabled
                 ? p.inkMuted.withValues(alpha: 0.35)
-                : (i == item.rotation % count ? p.accent : p.inkMuted),
+                : (i == item.rotation % count
+                      ? p.accent
+                      : (view.rotateHint ? p.accentInk : p.inkMuted)),
         );
+      }
+      if (view.rotateHint && !view.rotationDisabled) {
+        _paintRotateGlyph(canvas, Offset(slot.center.dx, slot.top + 9));
       }
       if (view.rotationDisabled) {
         canvas.drawLine(
@@ -568,6 +658,35 @@ class BoardPainter extends CustomPainter {
         );
       }
     }
+  }
+
+  /// A circular arrow: "this turns".
+  ///
+  /// Drawn rather than an icon font, because the board is a canvas and a
+  /// `TextPainter` for one glyph on every frame of a repeating animation is a
+  /// layout pass per frame.
+  void _paintRotateGlyph(Canvas canvas, Offset centre) {
+    const r = 6.0;
+    final stroke = Paint()
+      ..color = p.accentInk
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.6
+      ..strokeCap = StrokeCap.round;
+    canvas.drawArc(
+      Rect.fromCircle(center: centre, radius: r),
+      -math.pi * 0.75,
+      math.pi * 1.5,
+      false,
+      stroke,
+    );
+    // Arrowhead at the open end of the arc.
+    final tip = centre + Offset(r * 0.7, -r * 0.7);
+    final head = Path()
+      ..moveTo(tip.dx - 3, tip.dy - 1)
+      ..lineTo(tip.dx + 2.5, tip.dy - 1.5)
+      ..lineTo(tip.dx + 0.5, tip.dy + 3.5)
+      ..close();
+    canvas.drawPath(head, Paint()..color = p.accentInk);
   }
 
   /// The held piece, floating `liftOffset` above the finger.

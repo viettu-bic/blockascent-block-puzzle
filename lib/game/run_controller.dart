@@ -119,6 +119,34 @@ class RunController extends ChangeNotifier {
   int battenCharges = 0;
   ToolAim aiming = ToolAim.none;
 
+  /// Bumped every time a patience pip is spent, and every time the combo
+  /// actually breaks.
+  ///
+  /// Ticks rather than values, because the HUD has to animate the *event* and
+  /// both numbers also move at a stage boundary, where nothing was lost. The
+  /// combo break was previously announced by nothing but the hero number
+  /// reading smaller the next time the player happened to look at it
+  /// (UX review 4.3).
+  int patienceLossTick = 0;
+  int comboBreakTick = 0;
+
+  /// The empty cells on a board that has jammed.
+  ///
+  /// A jam is 43% of early deaths and the loss screen named neither the rule
+  /// nor the place: "No moves left" over a hidden board. These are painted
+  /// warn-coloured for two seconds before the summary, which is the one moment
+  /// the player actively wants to know why (UX review 5).
+  List<Coord> jamCells = const [];
+
+  /// The very first run on this install, which is arranged to teach rather
+  /// than to be fair — see [_arrangeOpeningLesson].
+  bool _tutorialRun = false;
+  bool get tutorialRun => _tutorialRun;
+
+  /// Where the opening block goes on that first run. Cleared by the first
+  /// placement, whether or not the player took the hint.
+  ({int slot, Anchor anchor})? openingHint;
+
 
   int _placementsThisStage = 0;
   int _stagesCleared = 0;
@@ -243,7 +271,13 @@ class RunController extends ChangeNotifier {
     _spoolsEarned = 0;
     draftOptions = [];
     pendingMotifCard = null;
+    jamCells = const [];
+    openingHint = null;
     log.clear();
+
+    // Before `runsStarted` is incremented below: this is the first run this
+    // install has ever started.
+    _tutorialRun = account.runsStarted == 0;
 
     // The draft pool is fixed for the whole run: see [_poolMilestones].
     _poolMilestones = account.milestones;
@@ -294,6 +328,24 @@ class RunController extends ChangeNotifier {
         if (!unlocked.contains(f.id)) f.id,
     };
     phase = GamePhase.faultChoice;
+
+    // A screen with one answer is not a question (UX review 3.1).
+    //
+    // On a fresh account exactly one fault per act is unlocked, so the first
+    // thing the game ever asked — before a single block had been placed —
+    // was which of three defects the player wanted on level 4, with two of the
+    // three greyed out. This skips straight into the level and takes the one
+    // option; the screen comes back the moment there is genuinely something to
+    // choose between.
+    //
+    // This does not narrow anything (invariant 5): the locked options are
+    // locked either way, and the player still meets the chosen fault on the
+    // act's last level. What it removes is the asking.
+    final selectable = [
+      for (final f in a.faults)
+        if (!lockedFaultIds.contains(f.id)) f.id,
+    ];
+    if (selectable.length == 1) _takeFault(selectable.single);
   }
 
   /// Bank the fault just beaten, which is what opens the next tier.
@@ -317,17 +369,27 @@ class RunController extends ChangeNotifier {
   }
 
   void chooseFault(String faultId) {
+    // Nothing to choose unless the game is asking. Without this, a caller that
+    // chooses unconditionally after `begin` would restart stage 1 on the runs
+    // where the sole option was taken automatically.
+    if (phase != GamePhase.faultChoice) return;
     // A locked option is shown, so it can be tapped — refuse it here rather
     // than trusting the overlay to disable it.
     if (lockedFaultIds.contains(faultId)) return;
+    _takeFault(faultId);
+    notifyListeners();
+    _save();
+  }
+
+  /// Commit a fault and start the act's levels. Shared by the player's choice
+  /// and by the sole-option case, so the two cannot drift.
+  void _takeFault(String faultId) {
     final act = actOf(ladder.stage);
     chosenFaultByAct[act] = faultId;
     faultOptions = [];
     lockedFaultIds = {};
     phase = GamePhase.placing;
     _beginStage();
-    notifyListeners();
-    _save();
   }
 
   /* ---------------- the stage ---------------- */
@@ -404,7 +466,63 @@ class RunController extends ChangeNotifier {
     }
 
     _ensureTray();
+    if (_tutorialRun && ladder.stage == 1) _arrangeOpeningLesson();
     _checkJam();
+  }
+
+  /// Arrange level 1 of the very first run so the opening move clears a
+  /// column.
+  ///
+  /// **This replaces the tutorial page that used to open itself** (UX review
+  /// 1.1). That page was ~200 words with its button below the fold, shown to
+  /// someone who had not yet seen a board, and the rule it most needed to
+  /// teach — both axes clear — is one a player can simply be shown. So
+  /// column 0 starts filled except for the cells the first tray block covers,
+  /// and [openingHint] says where it goes.
+  ///
+  /// Only ever on the first run, and only on level 1: a pre-filled board is a
+  /// head start, and a head start the player keeps getting is a different
+  /// game. The filled cells score nothing themselves (placing never does),
+  /// so what the player banks is one line bonus at x1.00 — the same thing
+  /// they would have got by finding the move on their own.
+  ///
+  /// Deterministic, not random: it reads the tray the seed already produced
+  /// and fills around it, so the run stays replayable from its seed.
+  void _arrangeOpeningLesson() {
+    final slot = tray.indexWhere((t) => t != null);
+    if (slot < 0) return;
+    final item = tray[slot]!;
+    final cells = cellsOf(item.shapeId, item.rotation);
+    final e = extent(cells);
+    if (e.w > board.w || e.h > board.h) return;
+
+    // Bottom-left, which is where a thumb already is.
+    final ax = 0;
+    final ay = board.h - e.h;
+
+    // The rows of column 0 the block itself will cover.
+    final covered = {
+      for (final (cx, cy) in cells)
+        if (cx == 0) ay + cy,
+    };
+    if (covered.isEmpty) return;
+
+    var b = board;
+    for (var y = 0; y < board.h; y++) {
+      if (covered.contains(y)) continue;
+      // Two sizes rather than one, so the column reads as cloth somebody wove
+      // rather than as a painted stripe.
+      b = setCell(b, 0, y, y.isEven ? 3 : 4);
+    }
+    board = b;
+
+    // Only claim the hint if the move is actually legal — a shape whose
+    // left column is not contiguous could still collide.
+    if (fits(board, cells, ax, ay)) {
+      openingHint = (slot: slot, anchor: Anchor(ax, ay));
+    } else {
+      board = createBoard(board.w, board.h);
+    }
   }
 
   /// Refill only when **all** slots are empty. This single rule is where the
@@ -469,6 +587,16 @@ class RunController extends ChangeNotifier {
       return;
     }
     // "The shed won't open" — nothing can pass.
+    //
+    // Name the gaps before the summary covers them. Every empty cell on a
+    // jammed board is, by definition, one no block fits, so there is no
+    // heuristic here to be wrong about.
+    jamCells = [
+      for (var y = 0; y < board.h; y++)
+        for (var x = 0; x < board.w; x++)
+          if (cellAt(board, x, y) == kEmpty) (x, y),
+    ];
+    account.jamsSeen++;
     ladder = jam(ladder);
     _endRun();
   }
@@ -550,6 +678,7 @@ class RunController extends ChangeNotifier {
     );
     if (mods.freeDryPlacement) _templeSpentThisStage = true;
 
+    final patienceBefore = ladder.score.patience;
     final outcome = applyPlacement(
       ladder,
       s.cellCount,
@@ -559,6 +688,11 @@ class RunController extends ChangeNotifier {
       mods: mods,
     );
     ladder = outcome.next;
+    if (ladder.score.patience < patienceBefore) patienceLossTick++;
+    if (outcome.broke) comboBreakTick++;
+
+    // The lesson is over the moment the player places anything, taken or not.
+    openingHint = null;
 
     _applyKnotFaults(result, cells, a);
     _recordMilestones(result, outcome);
@@ -760,6 +894,26 @@ class RunController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Nothing in the tray fits as it stands, but something fits turned.
+  ///
+  /// Rotation is tap-only and announced by three small pips under a tray
+  /// block, which nothing anywhere explains. A player who has not guessed it
+  /// reads this board as a jam and stops (UX review 4.1).
+  bool get needsRotation {
+    if (phase != GamePhase.placing || rotationDisabled) return false;
+    final shapes = _liveShapes;
+    if (shapes.isEmpty) return false;
+    if (hasAnyLegalMove(
+      board,
+      shapes,
+      allowRotation: false,
+      rotations: _liveRotations,
+    )) {
+      return false;
+    }
+    return hasAnyLegalMove(board, shapes);
+  }
+
   /// Apply an aimed tool at a board cell.
   void applyToolAt(int x, int y) {
     if (!inBounds(board, x, y)) return;
@@ -846,6 +1000,15 @@ class RunController extends ChangeNotifier {
     _save();
   }
 
+  /// The player has acknowledged "Tap a block to rotate it"; never show it
+  /// again on this install.
+  void markRotateHintSeen() {
+    if (account.seenRotateHint) return;
+    account.seenRotateHint = true;
+    _saveAccount();
+    notifyListeners();
+  }
+
   bool _spend(String id) {
     final n = toolCharges[id] ?? 0;
     if (n <= 0) return false;
@@ -912,11 +1075,24 @@ class RunController extends ChangeNotifier {
     _saveAccount();
   }
 
+  /// The headline on the summary.
+  ///
+  /// "Out of moves" was true and useless: it named the mechanism and not the
+  /// margin, and a run that ended three points short reads identically to one
+  /// that ended three hundred short (UX review 5.1).
   String get lossHeadline => switch (ladder.lossReason) {
     LossReason.jam => 'No moves left',
-    LossReason.target => 'Out of moves',
+    LossReason.target => _pointsShort > 0
+        ? '$_pointsShort ${_pointsShort == 1 ? 'point' : 'points'} short'
+        : 'Out of moves',
     null => 'You win!',
   };
+
+  int get _pointsShort => ladder.target - ladder.stageScore;
+
+  /// Whether the summary should print how close the level came. A jam can
+  /// happen at any score, so the margin says nothing there.
+  bool get lossWasOnScore => ladder.lossReason == LossReason.target;
 
   /* ---------------- persistence ---------------- */
 

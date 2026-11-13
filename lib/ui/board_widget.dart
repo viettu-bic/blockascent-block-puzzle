@@ -49,6 +49,13 @@ class _BoardWidgetState extends State<BoardWidget>
     value: 1,
   );
 
+  /// Drives the tray wobble that says a block can be turned. Repeating, and
+  /// only ever running while there is something to say (UX review 4.1).
+  late final AnimationController _rotateHint = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+
   late DragController _drag;
   Layout? _layout;
 
@@ -87,7 +94,23 @@ class _BoardWidgetState extends State<BoardWidget>
     c.removeListener(_onControllerChanged);
     _flash.dispose();
     _settle.dispose();
+    _rotateHint.dispose();
     super.dispose();
+  }
+
+  /// Start or stop the wobble to match the board.
+  ///
+  /// Called from `build`, which is where the answer is known: `needsRotation`
+  /// is a board scan and the tray changes under placements, tools and refills
+  /// alike.
+  void _syncRotateHint(bool wanted) {
+    final reduceMotion = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (wanted && !reduceMotion) {
+      if (!_rotateHint.isAnimating) _rotateHint.repeat();
+    } else if (_rotateHint.isAnimating) {
+      _rotateHint.stop();
+      _rotateHint.value = 0;
+    }
   }
 
   void _onControllerChanged() {
@@ -216,6 +239,18 @@ class _BoardWidgetState extends State<BoardWidget>
         );
         _layout = l;
 
+        final rotateHint = c.needsRotation;
+        _syncRotateHint(rotateHint);
+
+        // The opening lesson's target cells, in board coordinates.
+        final hint = c.openingHint;
+        final hintCells = hint == null
+            ? const <Coord>[]
+            : [
+                for (final (cx, cy) in _cellsForSlot(hint.slot) ?? const <Coord>[])
+                  (hint.anchor.x + cx, hint.anchor.y + cy),
+              ];
+
         return Listener(
           behavior: HitTestBehavior.opaque,
           onPointerDown: (e) {
@@ -234,7 +269,7 @@ class _BoardWidgetState extends State<BoardWidget>
             label: _boardSummary(),
             child: RepaintBoundary(
             child: AnimatedBuilder(
-              animation: Listenable.merge([_flash, _settle]),
+              animation: Listenable.merge([_flash, _settle, _rotateHint]),
               builder: (context, _) => CustomPaint(
                 size: Size(constraints.maxWidth, constraints.maxHeight),
                 painter: BoardPainter(
@@ -257,6 +292,10 @@ class _BoardWidgetState extends State<BoardWidget>
                     settleT: _settle.value,
                     settleCells: c.lastPlacedCells,
                     rotationDisabled: c.rotationDisabled,
+                    jamCells: c.jamCells,
+                    hintCells: hintCells,
+                    rotateHint: rotateHint,
+                    rotateHintT: _rotateHint.value,
                   ),
                 ),
               ),

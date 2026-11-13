@@ -13,6 +13,7 @@ import 'package:loomcraft/render/board_painter.dart';
 import 'package:loomcraft/render/layout.dart';
 import 'package:loomcraft/render/theme.dart';
 import 'package:loomcraft/ui/app.dart';
+import 'package:loomcraft/ui/board_widget.dart';
 import 'package:loomcraft/ui/game_screen.dart';
 import 'package:loomcraft/ui/how_to_play_screen.dart';
 import 'package:loomcraft/ui/shop_screen.dart';
@@ -55,79 +56,123 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  LoomcraftApp app() => LoomcraftApp(
-    storageOverride: MemoryStorage(),
-    tuningOverride: tuning,
-    // Silent: a real Sfx reaches the audioplayers platform channel, which a
-    // widget test does not have.
-    sfxOverride: Sfx(enabled: false),
+  /// [account] is seeded into storage, so a test can boot as a player who has
+  /// already played rather than as a fresh install. Passing none is a fresh
+  /// install, which is now a different thing entirely: it opens level 1.
+  LoomcraftApp app({Account? account}) {
+    final storage = MemoryStorage();
+    if (account != null) storage.write(accountKey, account.toJson());
+    return LoomcraftApp(
+      storageOverride: storage,
+      tuningOverride: tuning,
+      // Silent: a real Sfx reaches the audioplayers platform channel, which a
+      // widget test does not have.
+      sfxOverride: Sfx(enabled: false),
+    );
+  }
+
+  /// Someone who has played before: they get the menu, and because they have
+  /// cleared act 1's tier-1 fault they get a challenge screen with a real
+  /// choice on it.
+  Account playedAccount() => Account(
+    runsStarted: 3,
+    seenHowToPlay: true,
+    faultsCleared: {'thin_place'},
+    milestones: const Milestones(bestStage: 2),
   );
 
-  group('boot', () {
-    /// A fresh install opens the rules screen over the menu before anything
-    /// else — that is the FTUE, not an accident — so a boot test has to get
-    /// past it first. Dismissing it is also the assertion that it appeared.
-    Future<void> dismissTutorial(WidgetTester tester) async {
-      expect(
-        find.text('How to Play'),
-        findsOneWidget,
-        reason: 'a fresh install should open the rules by itself',
-      );
-      // The button sits under the four rule cards, so it is below the fold on
-      // a phone — which is the point: you scroll past the rules to continue.
-      await tester.dragUntilVisible(
-        find.text('Got it'),
-        find.byType(ListView),
-        const Offset(0, -300),
-      );
-      await tester.tap(find.text('Got it'));
-      await tester.pumpAndSettle();
-    }
+  /// The live controller, reached through the screen that holds it.
+  RunController findController(WidgetTester tester) =>
+      tester.widget<GameScreen>(find.byType(GameScreen)).controller;
 
-    testWidgets('a fresh install opens the rules by itself, once', (
+  group('boot', () {
+
+    testWidgets('a fresh install opens level 1, not a wall of rules', (
       tester,
     ) async {
+      // The rules page used to open itself over the menu: ~200 words with its
+      // button below the fold, shown to someone who had not yet seen a board.
+      // The first launch now goes straight into a level arranged to teach
+      // (UX review 1.1).
       await pumpPhone(tester, app());
-      await dismissTutorial(tester);
-      // Back on the menu, and it does not come back.
-      expect(find.text('Play'), findsOneWidget);
-      await tester.pumpAndSettle();
       expect(find.text('Rows AND columns clear'), findsNothing);
+      expect(find.text('Play'), findsNothing);
+      expect(find.byType(BoardWidget), findsOneWidget);
+    });
+
+    testWidgets('that first level is arranged so the opening move clears', (
+      tester,
+    ) async {
+      // The whole of the new FTUE in one assertion: a nearly-complete column,
+      // the first block in the tray fitting the hole exactly, and a hint
+      // pointing at it.
+      await pumpPhone(tester, app());
+      final c = findController(tester);
+      final hint = c.openingHint;
+      expect(hint, isNotNull, reason: 'the opening move is pointed at');
+
+      final item = c.tray[hint!.slot]!;
+      expect(c.canPlace(item, hint.anchor), isTrue);
+      expect(
+        c.previewFor(item, hint.anchor).isNotEmpty,
+        isTrue,
+        reason: 'and taking it finishes a line',
+      );
+
+      expect(c.place(hint.slot, hint.anchor), isTrue);
+      // The hand-holding ends with the first placement, taken or not.
+      expect(c.openingHint, isNull);
+    });
+
+    testWidgets('a first run is not asked to pick a challenge blind', (
+      tester,
+    ) async {
+      // A fresh account has exactly one fault unlocked per act, so the screen
+      // was asking a question with one answer — before a single block had
+      // been placed (UX review 3.1).
+      await pumpPhone(tester, app());
+      expect(find.text('Act 1 challenge'), findsNothing);
+      expect(findController(tester).phase, GamePhase.placing);
     });
 
     testWidgets('loads the real data/*.json and shows the workshop', (
       tester,
     ) async {
-      await pumpPhone(tester, app());
-      await dismissTutorial(tester);
+      await pumpPhone(tester, app(account: playedAccount()));
       expect(find.text('Play'), findsOneWidget);
       // The set picker moved into the shop, so the menu's second slot is the
       // rules now (docs/08 E7).
-      expect(find.text('How to Play'), findsOneWidget);
-      expect(find.text('Shop & Set'), findsOneWidget);
+      expect(find.text('How to play'), findsOneWidget);
+      expect(find.text('Shop'), findsOneWidget);
+      // And nothing on the menu repeats the rules or talks to the team
+      // (UX review 2.1, 2.2).
+      expect(find.textContaining('Working title'), findsNothing);
+      expect(find.textContaining('Fill a full row'), findsNothing);
     });
 
-    testWidgets('starting a run reaches the act 1 fault choice', (
+    testWidgets('the act 1 choice appears once there is one to make', (
       tester,
     ) async {
-      await pumpPhone(tester, app());
-      await dismissTutorial(tester);
+      // Tier 2 is unlocked for this account, so the screen has a real question
+      // on it again.
+      await pumpPhone(tester, app(account: playedAccount()));
       await tester.tap(find.text('Play'));
       await tester.pumpAndSettle();
-      expect(find.text('Act 1'), findsOneWidget);
+      expect(find.text('Act 1 challenge'), findsOneWidget);
       // All three are shown — a ladder the player cannot see is not a ladder —
-      // and the two locked ones carry what unlocks them.
+      // and the one still locked carries what unlocks it.
       expect(find.text('Tight Budget'), findsOneWidget);
       expect(find.text('Columns Only'), findsOneWidget);
       expect(find.text('Short Fuse'), findsOneWidget);
-      expect(find.textContaining('Locked'), findsNWidgets(2));
+      expect(find.textContaining('Locked'), findsOneWidget);
+      // The archetype line is gone (UX review 3.3).
+      expect(find.textContaining('Hurts:'), findsNothing);
     });
 
     testWidgets('choosing a fault shows the board and the HUD', (
       tester,
     ) async {
-      await pumpPhone(tester, app());
-      await dismissTutorial(tester);
+      await pumpPhone(tester, app(account: playedAccount()));
       await tester.tap(find.text('Play'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Tight Budget'));
@@ -210,7 +255,7 @@ void main() {
         ),
       );
       expect(find.text('Small Block Bonus'), findsOneWidget);
-      expect(find.text('Take nothing'), findsOneWidget);
+      expect(find.text('Skip'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -324,15 +369,18 @@ void main() {
       );
       // And the two this redesign created.
       expect(find.text('Clearing is the only way to score'), findsOneWidget);
+      // Rule 4 says the consequence, not the shopping list: the old copy ended
+      // "...and they are what the shop sells first", which reads as a promise
+      // that the 1x1 is cheap and early. It is the most expensive thing in the
+      // game — tier 4, 3,600 coins (UX review 1.3).
       await tester.dragUntilVisible(
-        find.text('A one-cell hole needs a one-cell block'),
+        find.text('Tiny gaps can end your run'),
         find.byType(ListView),
         const Offset(0, -300),
       );
-      expect(
-        find.text('A one-cell hole needs a one-cell block'),
-        findsOneWidget,
-      );
+      expect(find.text('Tiny gaps can end your run'), findsOneWidget);
+      // And the control the game mentions nowhere else.
+      expect(find.text('Tap a block to rotate it.'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
@@ -355,13 +403,14 @@ void main() {
     ) async {
       final c = RunController(
         tuning: tuning,
-        account: Account(),
+        // Not a first install: that one opens on a board that already has a
+        // column on it, which is the wrong board for these two.
+        account: Account(runsStarted: 1),
         storage: MemoryStorage(),
         haptics: Haptics(enabled: false),
         seedSource: () => 3,
       );
       c.begin();
-      c.chooseFault('thin_place');
 
       final layout = computeLayout(390, 600, 8, 8);
       await tester.pumpWidget(
@@ -397,13 +446,14 @@ void main() {
       final layout = computeLayout(390, 600, 8, 8);
       final c = RunController(
         tuning: tuning,
-        account: Account(),
+        // Not a first install: that one opens on a board that already has a
+        // column on it, which is the wrong board for these two.
+        account: Account(runsStarted: 1),
         storage: MemoryStorage(),
         haptics: Haptics(enabled: false),
         seedSource: () => 3,
       );
       c.begin();
-      c.chooseFault('thin_place');
 
       BoardView view() => BoardView(
         board: c.board,

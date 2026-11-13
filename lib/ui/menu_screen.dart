@@ -98,17 +98,11 @@ class MenuScreen extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const SizedBox(height: Space.md),
-                      Text(
-                        'Place blocks on the board. Fill a full row or column to '
-                        'clear it. Keep your combo alive.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: p.inkMuted,
-                          fontSize: FontSize.label,
-                          height: 1.5,
-                        ),
-                      ),
+                      // No rules paragraph here (UX review §2.1). It repeated
+                      // How to Play word for word, on the one screen whose job
+                      // is to get the player into a run — and a player who
+                      // reads rules on a title screen is a player who has not
+                      // started yet.
                       const SizedBox(height: Space.xl),
                       LoomPanel(
                         palette: p,
@@ -131,8 +125,14 @@ class MenuScreen extends StatelessWidget {
                             const SizedBox(height: 10),
                             Row(
                               children: [
+                                // "BEST" alone reads as a high score, and the
+                                // value was a sentence ("level 1 · 2 won").
+                                // The noun belongs in the label and the value
+                                // is a number — and 0 rather than an em dash,
+                                // because a dash on the first visit reads as
+                                // "nothing was saved" (UX review §2.4).
                                 Text(
-                                  'BEST',
+                                  'BEST LEVEL',
                                   style: TextStyle(
                                     color: p.inkMuted,
                                     fontSize: FontSize.micro,
@@ -141,13 +141,13 @@ class MenuScreen extends StatelessWidget {
                                 ),
                                 const Spacer(),
                                 Text(
-                                  account.milestones.bestStage == 0
-                                      ? '—'
-                                      : 'level ${account.milestones.bestStage}'
-                                            '${account.wins > 0 ? ' · ${account.wins} won' : ''}',
+                                  '${account.milestones.bestStage}',
                                   style: TextStyle(
                                     color: p.ink,
                                     fontSize: FontSize.label,
+                                    fontFeatures: const [
+                                      FontFeature.tabularFigures(),
+                                    ],
                                   ),
                                 ),
                               ],
@@ -212,19 +212,22 @@ class MenuScreen extends StatelessWidget {
                           Expanded(
                             child: LoomButton(
                               palette: p,
-                              label: 'How to Play',
-                              subtitle: 'Four rules that decide every run',
+                              label: 'How to play',
                               onPressed: onHowToPlay,
                             ),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
+                            // "Shop & Set · 5 / 22 blocks · 5 in play" was a
+                            // sentence on a button: it made the two cards
+                            // different heights, and "5 in play" means nothing
+                            // before you have seen the set picker (UX review
+                            // §2.3).
                             child: LoomButton(
                               palette: p,
-                              label: 'Shop & Set',
+                              label: 'Shop',
                               subtitle:
-                                  '${account.ownedShapeIds.length} / ${allShapes.length} blocks · '
-                                  '${account.loadout.length} in play',
+                                  '${account.ownedShapeIds.length}/${allShapes.length}',
                               onPressed: onShop,
                             ),
                           ),
@@ -239,15 +242,10 @@ class MenuScreen extends StatelessWidget {
                         icon: Icons.tune,
                         onPressed: onSettings,
                       ),
-                      const SizedBox(height: Space.xl),
-                      Text(
-                        'Working title, pending a store and trademark search.',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: p.inkMuted,
-                          fontSize: FontSize.micro,
-                        ),
-                      ),
+                      // The "working title, pending a store and trademark
+                      // search" note was a line from the team to the team,
+                      // printed under the player's Play button, where it reads
+                      // as "this game is not finished" (UX review §2.2).
                       const SizedBox(height: Space.lg),
                     ],
                   ),

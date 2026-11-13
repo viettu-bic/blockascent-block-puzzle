@@ -409,19 +409,54 @@ class PowerCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: Space.sm),
-                        Text(
-                          '${def.rarity.name} · '
-                          '${powerFamilyName(def.family)}',
-                          style: TextStyle(
-                            // inkMuted, not the rarity colour: a rarity colour
-                            // is tuned to 3:1 as a frame, and "common" grey at
-                            // 3.3:1 is under the 4.5:1 that text needs. The
-                            // colour stays on the frame and the glyph, where
-                            // the 3:1 bar is the right one.
-                            color: palette.inkMuted,
-                            fontSize: FontSize.micro,
-                            letterSpacing: 0.8,
-                          ),
+                        // Rarity in a chip, family as plain text beside it
+                        // (UX review 8.2). They used to be one grey line,
+                        // "common [.] tools", in which the half that decides
+                        // whether a card is worth taking looked exactly like
+                        // the half that is trivia.
+                        //
+                        // The chip carries the rarity colour on its fill and
+                        // border, never on the text: a rarity colour is tuned
+                        // to 3:1 as a frame, and "common" grey at 3.3:1 is
+                        // under the 4.5:1 that text needs.
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: rarity.withValues(alpha: 0.22),
+                                borderRadius: BorderRadius.circular(4),
+                                border: Border.all(
+                                  color: rarity.withValues(alpha: 0.9),
+                                ),
+                              ),
+                              child: Text(
+                                _titleCase(def.rarity.name),
+                                style: TextStyle(
+                                  color: palette.ink,
+                                  fontSize: FontSize.micro,
+                                  fontWeight: FontWeight.w700,
+                                  letterSpacing: 0.6,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: Space.sm),
+                            Flexible(
+                              child: Text(
+                                _titleCase(powerFamilyName(def.family)),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: palette.inkMuted,
+                                  fontSize: FontSize.micro,
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -435,6 +470,9 @@ class PowerCard extends StatelessWidget {
     );
   }
 }
+
+String _titleCase(String word) =>
+    word.isEmpty ? word : word[0].toUpperCase() + word.substring(1);
 
 class _StackPips extends StatelessWidget {
   const _StackPips({

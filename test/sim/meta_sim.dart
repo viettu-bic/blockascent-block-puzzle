@@ -182,6 +182,11 @@ Account accountAt(
     upgrades: upgrades,
     milestones: milestones ?? _milestonesAt(fraction),
     faultsCleared: _faultsClearedAt(fraction),
+    // Not a first install. `runsStarted == 0` arranges level 1 to teach — a
+    // nearly-complete column handed to the player (`_arrangeOpeningLesson`) —
+    // and a gate measured on a tutorial board is not measuring the game. Every
+    // figure in docs/06 3 is about a player who has played before.
+    runsStarted: 1,
   );
   account.loadout = chooseLoadout(account);
   account.refreshOwnershipMilestones();

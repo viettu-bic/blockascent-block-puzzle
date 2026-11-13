@@ -95,7 +95,20 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
         _music = music;
         _savedRunExists = savedRun != null;
       });
-      // The app opens on the menu, so that is the track it opens on.
+
+      // A brand-new install opens on level 1, not on the menu (UX review 1.1).
+      //
+      // It used to open the rules page over the menu: ~200 words with its
+      // button below the fold, shown to someone who had not yet seen a board.
+      // Level 1 of a first run is arranged to teach instead
+      // (`RunController._arrangeOpeningLesson`), and the rules stay one tap
+      // away from both the menu and the HUD.
+      if (account.runsStarted == 0 && savedRun == null) {
+        _newRun();
+        return;
+      }
+
+      // Otherwise the app opens on the menu, so that is the track it opens on.
       music.play(MusicTrack.menu);
     } on Object catch (e) {
       if (!mounted) return;
@@ -234,18 +247,6 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
               },
             );
           }
-          // The rules open themselves on the very first launch. A help page
-          // behind a menu button is read by nobody; an FTUE is the thing that
-          // appears. docs/08 E2, and it matters more now that 43% of early
-          // deaths are jams nobody explained (docs/04 §9).
-          if (!_account!.seenHowToPlay && !_howToPlayOpened) {
-            _howToPlayOpened = true;
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (mounted) {
-                _openHowToPlay(context, palette, firstLaunch: true);
-              }
-            });
-          }
           return MenuScreen(
             account: _account!,
             palette: palette,
@@ -269,27 +270,18 @@ class _LoomcraftAppState extends State<LoomcraftApp> {
     );
   }
 
-  /// Open the rules screen. [firstLaunch] turns the footer into "Got it" and
-  /// marks the account, so it opens itself exactly once.
-  /// Guards the one-shot: a rebuild must not queue a second push.
-  bool _howToPlayOpened = false;
-
-  void _openHowToPlay(
-    BuildContext context,
-    LoomPalette palette, {
-    bool firstLaunch = false,
-  }) {
+  /// Open the rules screen from the menu.
+  ///
+  /// Nothing opens it by itself any more; it is a reference page, and it is
+  /// also reachable mid-run from the "?" in the HUD.
+  void _openHowToPlay(BuildContext context, LoomPalette palette) {
+    if (!_account!.seenHowToPlay) {
+      _account!.seenHowToPlay = true;
+      _saveAccount();
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => HowToPlayScreen(
-          palette: palette,
-          onDone: firstLaunch
-              ? () {
-                  _account!.seenHowToPlay = true;
-                  _saveAccount();
-                }
-              : null,
-        ),
+        builder: (_) => HowToPlayScreen(palette: palette),
       ),
     );
   }

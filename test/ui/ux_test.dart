@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:loomcraft/core/board.dart';
 import 'package:loomcraft/core/powers.dart';
 import 'package:loomcraft/core/shapes.dart';
 import 'package:loomcraft/data/tuning.dart';
@@ -9,6 +10,7 @@ import 'package:loomcraft/platform/haptics.dart';
 import 'package:loomcraft/platform/storage.dart';
 import 'package:loomcraft/render/board_painter.dart';
 import 'package:loomcraft/render/theme.dart';
+import 'package:loomcraft/ui/board_widget.dart';
 import 'package:loomcraft/ui/game_screen.dart';
 import 'package:loomcraft/ui/hud.dart';
 import 'package:loomcraft/ui/how_to_play_screen.dart';
@@ -228,13 +230,30 @@ void main() {
         // The IconButton's node, not the Icon's: the Icon itself is
         // deliberately unlabelled, and the accessible name belongs to the
         // control that does something.
-        final node = tester.getSemantics(find.byType(IconButton));
+        final node = tester.getSemantics(
+          find.ancestor(
+            of: find.byIcon(Icons.settings),
+            matching: find.byType(IconButton),
+          ),
+        );
         expect(
           node.label,
           contains('Settings'),
           reason: 'the settings control must announce what it does',
         );
         expect(node.flagsCollection.isButton, isTrue);
+
+        // Its neighbour: the rules, reachable without ending the run
+        // (UX review 4.5). Icon-only too, so it needs the same treatment.
+        expect(find.byIcon(Icons.help_outline), findsOneWidget);
+        final help = tester.getSemantics(
+          find.ancestor(
+            of: find.byIcon(Icons.help_outline),
+            matching: find.byType(IconButton),
+          ),
+        );
+        expect(help.label, contains('How to play'));
+        expect(help.flagsCollection.isButton, isTrue);
       });
     });
   });
@@ -344,11 +363,17 @@ void main() {
       expect(c.aiming, isNot(ToolAim.none));
     });
 
-    testWidgets('the tool row takes no space before a tool is drafted', (
+    testWidgets('the tool row holds its height before a tool is drafted', (
       tester,
     ) async {
-      // The board is the game; an empty strip reserving height above it is a
-      // cost paid by every run for a feature most runs do not have yet.
+      // The inverse of what this used to assert, and the reason is the board.
+      //
+      // Collapsing to nothing looks thrifty and costs the one thing the game
+      // cannot afford to move: Eraser arrives from the level-2 draft, so on
+      // the first draft of every run the row appeared and pushed the whole
+      // board down by its height, mid-run, between one placement and the next.
+      // The thumb had already calibrated against the old position
+      // (UX review 4.4).
       final c = controllerFor(richAccount());
       await pump(
         tester,
@@ -359,7 +384,38 @@ void main() {
         size: const Size(360, 640),
       );
       expect(find.byType(ToolButton), findsNothing);
-      expect(tester.getSize(find.byType(ToolRow)).height, 0);
+      expect(
+        tester.getSize(find.byType(ToolRow)).height,
+        ToolRow.reservedHeight,
+      );
+    });
+
+    testWidgets('the board does not move when the first tool is drafted', (
+      tester,
+    ) async {
+      // What the reserved height is actually for, asserted on the board rather
+      // than on the strip: the geometry is the whole point.
+      final c = controllerFor(richAccount());
+      await pump(
+        tester,
+        (p) => GameScreen(
+          controller: c,
+          palette: p,
+          onAgain: () {},
+          onMenu: () {},
+          onShop: () {},
+        ),
+        size: const Size(360, 640),
+      );
+      final before = tester.getRect(find.byType(BoardWidget));
+
+      c.powers = c.powers.plus(const PickedPower('unpick'));
+      c.toolCharges['unpick'] = 2;
+      c.notifyListeners();
+      await tester.pump();
+
+      expect(find.byType(ToolButton), findsOneWidget);
+      expect(tester.getRect(find.byType(BoardWidget)), before);
     });
 
     testWidgets('the HUD alone survives the largest allowed text scale', (
@@ -373,7 +429,12 @@ void main() {
         tester,
         (p) => Scaffold(
           backgroundColor: p.background,
-          body: Hud(controller: c, palette: p, onSettings: () {}),
+          body: Hud(
+            controller: c,
+            palette: p,
+            onSettings: () {},
+            onHelp: () {},
+          ),
         ),
         textScale: maxTextScale,
         size: const Size(360, 640),
@@ -419,6 +480,103 @@ void main() {
         size: const Size(360, 640),
       );
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('teaching moments', () {
+    testWidgets('a jam shows the gaps before the summary covers them', (
+      tester,
+    ) async {
+      // The board is the explanation. Covering it instantly with "No moves
+      // left" is the one thing the loss screen must not do (UX review 5).
+      final a = Account(runsStarted: 1);
+      final c = controllerFor(a);
+
+      var b = createBoard();
+      for (var y = 0; y < b.h; y++) {
+        for (var x = 0; x < b.w; x++) {
+          if ((x == 0 && y == 0) || (x == 7 && y == 7)) continue;
+          b = setCell(b, x, y, 3);
+        }
+      }
+      c.board = b;
+      c.powers = c.powers.plus(const PickedPower('rethread'));
+      c.toolCharges['rethread'] = 1;
+      c.rethread();
+      expect(c.phase, GamePhase.lost);
+
+      await pump(
+        tester,
+        (p) => GameScreen(
+          controller: c,
+          palette: p,
+          onAgain: () {},
+          onMenu: () {},
+          onShop: () {},
+        ),
+      );
+
+      expect(find.text('Play again'), findsNothing, reason: 'board first');
+      expect(find.text('No block fits these gaps'), findsOneWidget);
+
+      await tester.pump(jamRevealHold);
+      await tester.pumpAndSettle();
+      expect(find.text('Play again'), findsOneWidget);
+      expect(find.text('No block fits these gaps'), findsNothing);
+    });
+
+    testWidgets('losing the combo is said out loud, then stops being said', (
+      tester,
+    ) async {
+      final c = controllerFor(richAccount());
+      await pump(
+        tester,
+        // The whole screen, not the HUD alone: the HUD is stateless and it is
+        // the game screen that listens to the controller.
+        (p) => GameScreen(
+          controller: c,
+          palette: p,
+          onAgain: () {},
+          onMenu: () {},
+          onShop: () {},
+        ),
+      );
+      expect(find.text('COMBO'), findsOneWidget);
+      expect(find.text('Combo lost'), findsNothing);
+
+      c.comboBreakTick++;
+      c.notifyListeners();
+      await tester.pump();
+      expect(find.text('Combo lost'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 1100));
+      expect(find.text('Combo lost'), findsNothing);
+      expect(find.text('COMBO'), findsOneWidget);
+    });
+
+    testWidgets('the rules open over a run without ending it', (tester) async {
+      // The gear is settings and the menu abandons the run, so a player who
+      // forgot a rule mid-run had nowhere to look (UX review 4.5).
+      final c = controllerFor(richAccount());
+      await pump(
+        tester,
+        (p) => GameScreen(
+          controller: c,
+          palette: p,
+          onAgain: () {},
+          onMenu: () {},
+          onShop: () {},
+        ),
+      );
+      await tester.tap(find.byIcon(Icons.help_outline));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Rows AND columns clear'), findsOneWidget);
+      expect(c.phase, GamePhase.placing, reason: 'the run is still going');
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+      expect(find.text('Rows AND columns clear'), findsNothing);
     });
   });
 

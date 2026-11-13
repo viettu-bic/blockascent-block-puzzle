@@ -1,6 +1,8 @@
 {
   "_": "Fault stages — this design's bosses. Three per act, offered at the act's start — but only the tiers unlocked. See docs/06-stages-and-bosses.md. Every name is a real weaving defect.",
 
+  "_ruleVoice": "Added 2026-11-13 (UX review §3). A fault rule is read by a player who has never met one, at the moment they are asked to pick it, so it states the CONSEQUENCE in plain words rather than the coefficient: '30% fewer moves, 25% lower target', not 'moves x0.7, target x0.75'. The words x0.7, patience, warp and weft mean nothing on a first run. The `attacks` field below is design documentation and is deliberately NOT shown on the card any more — 'Hurts: slow, high-scoring builds' names archetypes a new player does not have.",
+
   "_unlock": "Added 2026-11-11. Tier 1 is always offered; tier 2 opens once that act's tier 1 has been cleared, tier 3 once tier 2 has. Account-wide and permanent, because each act happens once per run — a per-run unlock would mean the player never saw anything but tier 1. The reason: the measured 0%-unlock median death is stage 4, which IS the act-1 fault stage, so a first-time player was being asked to choose blind between three defects they had never met at the exact moment their runs ended. That is a guess, not agency. It is not the thing docs/06 6 forbids, which is LOSING TO RANDOMNESS; this is permanent, earned and visible. Two consequences to hold onto: each act's tier-1 fault is now MANDATORY for a first clear, so it must be survivable by every archetype rather than 'at least three' (docs/06 5), and since harder faults pay better drafts, fault progression is a second power axis that belongs inside the gate budget.",
 
   "_placement": "Faults sit at stages 4, 8 and 12 — the last stage of each act. The act's three options are announced when the act begins, so the player can draft toward the one they chose.",
@@ -27,9 +29,9 @@
       "name": "Act 1 challenges",
       "_": "Mild and legible. Their job is to teach what a fault IS, against a target of only 1.2x floor capability.",
       "faults": [
-        { "id": "thin_place", "name": "Tight Budget", "tier": 1, "rule": "moves x0.7, target x0.75", "attacks": "slow, high-scoring builds" },
-        { "id": "reediness", "name": "Columns Only", "tier": 2, "rule": "only columns clear this level; full rows do nothing", "attacks": "row-focused builds and the Row Bonus upgrade" },
-        { "id": "mispick", "name": "Short Fuse", "tier": 3, "rule": "patience reduced to 1", "attacks": "fast builds that rely on setup moves" }
+        { "id": "thin_place", "name": "Tight Budget", "tier": 1, "rule": "30% fewer moves, 25% lower target", "attacks": "slow, high-scoring builds" },
+        { "id": "reediness", "name": "Columns Only", "tier": 2, "rule": "Rows don't clear — only columns.", "attacks": "row-focused builds and the Row Bonus upgrade" },
+        { "id": "mispick", "name": "Short Fuse", "tier": 3, "rule": "Combo breaks after 1 move without a clear.", "attacks": "fast builds that rely on setup moves" }
       ]
     },
     {
@@ -38,9 +40,9 @@
       "name": "Act 2 challenges",
       "_": "Real tests against 3.0x floor capability. Each invalidates one archetype's main plan.",
       "faults": [
-        { "id": "fixed_heddles", "name": "No Rotation", "tier": 1, "rule": "rotation is disabled for this level", "attacks": "builds around big pieces" },
-        { "id": "barre", "name": "Big Pieces Only", "tier": 2, "rule": "you are only dealt pieces of 4 blocks or more", "attacks": "small-piece builds and the Small Block Guarantee" },
-        { "id": "slubs", "name": "Blockers", "tier": 3, "rule": "six blockers are scattered on the board at the start", "attacks": "builds that control which blocks they get" }
+        { "id": "fixed_heddles", "name": "No Rotation", "tier": 1, "rule": "Blocks cannot be rotated.", "attacks": "builds around big pieces" },
+        { "id": "barre", "name": "Big Pieces Only", "tier": 2, "rule": "You are only dealt blocks of 4 cells or more.", "attacks": "small-piece builds and the Small Block Guarantee" },
+        { "id": "slubs", "name": "Blockers", "tier": 3, "rule": "Six blockers start on the board.", "attacks": "builds that control which blocks they get" }
       ]
     },
     {
@@ -49,9 +51,9 @@
       "name": "Act 3 challenges",
       "_": "The finale, against 7.4x floor capability. Each should be survivable by at least three archetypes and trivial for none.",
       "faults": [
-        { "id": "tight_reed", "name": "Narrow Board", "tier": 1, "rule": "the board is 7x7 for this level; lines are 7 blocks long", "_impl": "Genuinely resize the board rather than knotting the outer ring — a ring of knots would be an all-knot line and needs the guard, and 7-long lines are the clearer read. Cells in the discarded row and column are lost, which is thematically the reed tightening and the cloth narrowing.", "attacks": "big pieces; a squeeze on everything" },
-        { "id": "the_smash", "name": "Creeping Blockers", "tier": 2, "rule": "every third move, a random empty cell becomes a blocker", "attacks": "long slow levels; rewards clearing fast" },
-        { "id": "floats", "name": "Sticky Blocks", "tier": 3, "rule": "any move that clears no line leaves one of its blocks behind as a blocker", "attacks": "setup play, brutally — it demands a clear almost every turn" }
+        { "id": "tight_reed", "name": "Narrow Board", "tier": 1, "rule": "The board is 7×7. Lines are 7 cells long.", "_impl": "Genuinely resize the board rather than knotting the outer ring — a ring of knots would be an all-knot line and needs the guard, and 7-long lines are the clearer read. Cells in the discarded row and column are lost, which is thematically the reed tightening and the cloth narrowing.", "attacks": "big pieces; a squeeze on everything" },
+        { "id": "the_smash", "name": "Creeping Blockers", "tier": 2, "rule": "Every third move turns an empty cell into a blocker.", "attacks": "long slow levels; rewards clearing fast" },
+        { "id": "floats", "name": "Sticky Blocks", "tier": 3, "rule": "A move that clears nothing leaves one of its cells behind as a blocker.", "attacks": "setup play, brutally — it demands a clear almost every turn" }
       ]
     }
   ],

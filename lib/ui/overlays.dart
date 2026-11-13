@@ -32,10 +32,11 @@ class FaultChoiceOverlay extends StatelessWidget {
 
     return LoomOverlay(
       palette: palette,
-      title: 'Act $act',
-      subtitle: 'Choose the challenge you will face on level $faultStage.\n'
-          'You have ${faultStage - c.ladder.stage + 1} levels to prepare '
-          'for it.',
+      // "Act 1" alone does not say what the screen is for, and the old
+      // subtitle took two lines to say one thing — the second line was
+      // arithmetic the player can do from the first (UX review 3.2).
+      title: 'Act $act challenge',
+      subtitle: "Pick one. You'll face it on level $faultStage.",
       child: SingleChildScrollView(
         child: StaggeredList(
           spacing: Space.md,
@@ -78,9 +79,9 @@ class _FaultCard extends StatelessWidget {
   final String? unlockedBy;
 
   static const Map<DraftReward, String> _rewardText = {
-    DraftReward.normal: 'Reward: a normal upgrade pick',
-    DraftReward.uncommonOrBetter: 'Reward: uncommon or better only',
-    DraftReward.raresOnly: 'Reward: rares only',
+    DraftReward.normal: 'Reward: 1 upgrade',
+    DraftReward.uncommonOrBetter: 'Reward: uncommon or better',
+    DraftReward.raresOnly: 'Reward: rare',
   };
 
   static const List<String> _tierWords = ['', 'mild', 'hard', 'severe'];
@@ -92,10 +93,9 @@ class _FaultCard extends StatelessWidget {
     label: locked
         ? '${fault.name}, ${_tierWords[fault.tier]}, locked. '
             '${unlockedBy == null ? '' : 'Clear $unlockedBy to unlock. '}'
-            '${fault.rule}. Hurts ${fault.attacks}. '
-            '${_rewardText[fault.reward]}'
-        : '${fault.name}, ${_tierWords[fault.tier]}. ${fault.rule}. '
-            'Hurts ${fault.attacks}. ${_rewardText[fault.reward]}',
+            '${fault.rule} ${_rewardText[fault.reward]}'
+        : '${fault.name}, ${_tierWords[fault.tier]}. ${fault.rule} '
+            '${_rewardText[fault.reward]}',
     excludeSemantics: true,
     child: Opacity(
       // Dimmed rather than hidden: the point of a locked row is that the
@@ -176,12 +176,10 @@ class _FaultCard extends StatelessWidget {
                 height: 1.35,
               ),
             ),
+            // No "Hurts: slow, high-scoring builds" line (UX review 3.3).
+            // It names archetypes to a player who has not built one, in the
+            // vocabulary of the design docs rather than of the game.
             const SizedBox(height: 8),
-            Text(
-              'Hurts: ${fault.attacks}',
-              style: TextStyle(color: palette.inkMuted, fontSize: FontSize.label),
-            ),
-            const SizedBox(height: 4),
                 Text(
                   _rewardText[fault.reward]!,
                   style: TextStyle(
@@ -201,7 +199,7 @@ class _FaultCard extends StatelessWidget {
                         child: Text(
                           unlockedBy == null
                               ? 'Locked'
-                              : 'Locked — clear $unlockedBy first',
+                              : 'Locked · clear $unlockedBy first',
                           style: TextStyle(
                             color: palette.inkMuted,
                             fontSize: FontSize.label,
@@ -264,8 +262,10 @@ class DraftOverlay extends StatelessWidget {
             children: [
               TextButton(
                 onPressed: c.skipDraft,
+                // Was "Take nothing", which is a sentence about a decision.
+                // "Skip" is the word every other game uses for this button.
                 child: Text(
-                  'Take nothing',
+                  'Skip',
                   style: TextStyle(color: palette.inkMuted),
                 ),
               ),
@@ -385,9 +385,14 @@ class SummaryOverlay extends StatelessWidget {
     return LoomOverlay(
       palette: palette,
       title: won ? 'You win!' : c.lossHeadline,
+      // "77 / 80 · Level 1 of 12" rather than the level alone. Losing by three
+      // points is the moment a player is most likely to press Play again, so
+      // the screen says how close it was (UX review 5.1).
       subtitle: won
           ? 'All ${c.tuning.curve.stages} levels cleared.'
-          : 'Level ${c.ladder.stage} of ${c.tuning.curve.stages}',
+          : '${c.lossWasOnScore ? '${formatScore(c.ladder.stageScore)} / '
+              '${formatScore(c.ladder.target)} · ' : ''}'
+              'Level ${c.ladder.stage} of ${c.tuning.curve.stages}',
       child: Column(
         children: [
           Expanded(
@@ -424,7 +429,9 @@ class SummaryOverlay extends StatelessWidget {
                 if (c.firstRunOfDay)
                   _Stat(
                     palette: palette,
-                    label: 'of which first run of the day',
+                    // Was "of which first run of the day" — six words of
+                    // grammar for a line that is part of the +115 above it.
+                    label: 'First run today',
                     value: '+${c.tuning.economy.payout.firstRunOfDayBonus}',
                     muted: true,
                   ),

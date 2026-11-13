@@ -85,8 +85,10 @@ Future<void> _generate() async {
     faults: parseFaults(await read('faults.json')),
   );
 
-  // A freshly cleared app: tier 1 only, no upgrades.
-  final account = Account();
+  // A freshly cleared app: tier 1 only, no upgrades. `runsStarted: 1` because
+  // the script is a walkthrough of ordinary play — a literal first install
+  // gets a level 1 pre-arranged to teach, which is a different board.
+  final account = Account(runsStarted: 1);
   final c = RunController(
     tuning: tuning,
     account: account,

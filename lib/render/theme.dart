@@ -127,17 +127,21 @@ class LoomPalette {
 
   /// Plain size words, so a player can name a block without naming a colour
   /// — which is also the one label a colourblind player can always rely on.
+  /// One word per thing: a **block** is the piece you place, a **cell** is a
+  /// square of the board. These count cells, and saying "3 blocks" for a
+  /// three-cell block was the single most confusing string in the game
+  /// (UX review 6.2, 8.1).
   static const List<String> sizeNames = [
     '',
-    '1 block',
-    '2 blocks',
-    '3 blocks',
-    '4 blocks',
-    '5 blocks',
-    '6 blocks',
-    '7 blocks',
-    '8 blocks',
-    '9 blocks',
+    '1 cell',
+    '2 cells',
+    '3 cells',
+    '4 cells',
+    '5 cells',
+    '6 cells',
+    '7 cells',
+    '8 cells',
+    '9 cells',
   ];
 
   static String sizeName(int cellCount) =>

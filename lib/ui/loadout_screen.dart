@@ -89,13 +89,18 @@ class _LoadoutPickerState extends State<LoadoutPicker> {
           ],
         ),
         const SizedBox(height: 6),
+        // What a tile does, always on screen (UX review 6.1).
+        //
+        // The old copy claimed "all of them are in play", which stops being
+        // true the moment the player removes one — and they can, from the
+        // first run, with five blocks and eight slots. Nothing anywhere said
+        // a tile could be tapped at all.
         Text(
-          owned.length <= a.loadoutSlots
-              ? 'You own ${owned.length} blocks and have ${a.loadoutSlots} '
-                  'slots, so all of them are in play. Buying more is what '
-                  'makes this a choice.'
-              : 'Pick ${a.loadoutSlots}. A smaller set means you see each '
-                  'block more often — which is the point.',
+          'The blocks that can show up in your tray. Tap one to add or '
+          'remove it.'
+          '${owned.length > a.loadoutSlots ? ' ${owned.length} blocks, '
+              '${a.loadoutSlots} slots. Pick the ${a.loadoutSlots} you want '
+              'to play with.' : ''}',
           style: TextStyle(
             color: p.inkMuted,
             fontSize: FontSize.label,
@@ -120,7 +125,6 @@ class _LoadoutPickerState extends State<LoadoutPicker> {
                 palette: p,
                 shapeId: s.id,
                 selected: a.loadout.contains(s.id),
-                order: a.loadout.indexOf(s.id),
                 onTap: () => _toggle(s.id),
               ),
           ],
@@ -135,14 +139,12 @@ class _LoadoutTile extends StatelessWidget {
     required this.palette,
     required this.shapeId,
     required this.selected,
-    required this.order,
     required this.onTap,
   });
 
   final LoomPalette palette;
   final String shapeId;
   final bool selected;
-  final int order;
   final VoidCallback onTap;
 
   @override
@@ -152,7 +154,7 @@ class _LoadoutTile extends StatelessWidget {
       button: true,
       selected: selected,
       label: '${shapeName(shapeId)}, ${s.cellCount} cells'
-          '${selected ? ', slot ${order + 1}' : ''}',
+          '${selected ? ', in your set' : ''}',
       excludeSemantics: true,
       child: Material(
         color: palette.panel,
@@ -168,64 +170,35 @@ class _LoadoutTile extends StatelessWidget {
                 width: selected ? 1.8 : 1,
               ),
             ),
-            child: Stack(
+            // Name only, and the accent frame for "in your set" (UX review
+            // 6.2). The second line read "3 blocks" for a three-CELL block,
+            // and the corner badge numbered the order the blocks were added to
+            // the set — which changes nothing about a run.
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    MotifThumb(
-                      shapeId: shapeId,
-                      palette: palette,
-                      // Gives way to the labels rather than competing with
-                      // them: the thumbnail is the one part of this tile that
-                      // can afford to lose a few pixels.
-                      size: 38 /
-                          MediaQuery.textScalerOf(context)
-                              .scale(1.0)
-                              .clamp(1, 2),
-                      dimmed: !selected,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      shapeName(shapeId),
-                      style: TextStyle(
-                        color: palette.ink,
-                        fontSize: FontSize.micro,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      '${s.cellCount} blocks',
-                      style: TextStyle(
-                        color: palette.inkMuted,
-                        fontSize: FontSize.micro,
-                      ),
-                    ),
-                  ],
+                MotifThumb(
+                  shapeId: shapeId,
+                  palette: palette,
+                  // Gives way to the label rather than competing with it: the
+                  // thumbnail is the one part of this tile that can afford to
+                  // lose a few pixels.
+                  size: 38 /
+                      MediaQuery.textScalerOf(context)
+                          .scale(1.0)
+                          .clamp(1, 2),
+                  dimmed: !selected,
                 ),
-                if (selected)
-                  Positioned(
-                    top: 4,
-                    right: 4,
-                    child: Container(
-                      width: 15,
-                      height: 15,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: palette.accent,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Text(
-                        '${order + 1}',
-                        style: TextStyle(
-                          color: palette.onAccent,
-                          fontSize: FontSize.micro,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  shapeName(shapeId),
+                  style: TextStyle(
+                    color: palette.ink,
+                    fontSize: FontSize.micro,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ],
             ),
           ),

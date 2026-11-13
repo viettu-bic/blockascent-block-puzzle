@@ -89,16 +89,11 @@ class _ShopScreenState extends State<ShopScreen> {
         body: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            Text(
-              'Buying more never makes your set worse — you choose what goes '
-              'in it, right here.',
-              style: TextStyle(
-                color: p.inkMuted,
-                fontSize: FontSize.label,
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 18),
+            // No preamble (UX review 6.1). "Buying more never makes your set
+            // worse" is a design promise, not an instruction, and it was the
+            // first thing on the screen; what the player needs to know is that
+            // a tile can be tapped, which now sits on the picker itself where
+            // the tapping happens.
             // The set picker lives here rather than behind its own menu entry:
             // buying a block and deciding whether to play it are one decision,
             // and split across two screens a player bought something and then
@@ -151,18 +146,11 @@ class _ShopScreenState extends State<ShopScreen> {
                   onBuy: () => _buyUpgrade(u),
                 ),
               ),
-            const SizedBox(height: 24),
-            Text(
-              'A fourth tray slot is deliberately not for sale. It is the '
-              'biggest power swing in the game and it changes the refill rule '
-              'the difficulty rests on, so it lives in the upgrade picks, where '
-              'it costs you a choice.',
-              style: TextStyle(
-                color: p.inkMuted,
-                fontSize: FontSize.label,
-                height: 1.4,
-              ),
-            ),
+            // The note explaining that a fourth tray slot is "deliberately
+            // not for sale" is gone (UX review 7.1). Fourth Tray Slot is for
+            // sale, in the Upgrades list directly above it — the note was a
+            // design decision from before docs/08 B7 reversed it, left on the
+            // screen contradicting the thing it sits under.
             const SizedBox(height: 40),
           ],
         ),
