@@ -90,4 +90,45 @@ void main() {
       expect(starCountFor(const Size(4000, 4000), max: 40), 40);
     });
   });
+
+  group('gridStart', () {
+    // The bug this pins: with `ceil` the first line came out a whole spacing
+    // *before* the edge. `CustomPaint` does not clip, so on the game screen
+    // that line was drawn above the board canvas and across the HUD — a long
+    // dash through the multiplier and the combo pips.
+    test('never starts before the edge', () {
+      for (final spacing in [7.0, 20.0, 44.0, 43.7]) {
+        for (final origin in [0.0, 1.0, 12.5, 100.0, 237.3, -30.0]) {
+          for (final edge in [0.0, 5.0, 120.0, -60.0]) {
+            final v = gridStart(origin, edge, spacing);
+            expect(v, greaterThanOrEqualTo(edge),
+                reason: 'origin $origin, edge $edge, spacing $spacing');
+          }
+        }
+      }
+    });
+
+    test('is the FIRST line at or after the edge, not a later one', () {
+      for (final spacing in [7.0, 44.0]) {
+        for (final origin in [0.0, 12.5, 100.0, -30.0]) {
+          for (final edge in [0.0, 5.0, 120.0]) {
+            final v = gridStart(origin, edge, spacing);
+            expect(v - spacing, lessThan(edge),
+                reason: 'origin $origin, edge $edge, spacing $spacing');
+          }
+        }
+      }
+    });
+
+    test('stays in phase with the origin', () {
+      const spacing = 44.0;
+      for (final origin in [0.0, 12.5, 100.0, 237.3]) {
+        for (final edge in [0.0, 5.0, 120.0]) {
+          final offset = (gridStart(origin, edge, spacing) - origin) / spacing;
+          expect((offset - offset.roundToDouble()).abs(), lessThan(1e-9),
+              reason: 'origin $origin, edge $edge');
+        }
+      }
+    });
+  });
 }

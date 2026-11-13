@@ -130,6 +130,21 @@ void paintNebula(
   canvas.drawRect(area, paint);
 }
 
+/// The first grid line at or after [edge] that is in phase with [origin].
+///
+/// **This was `ceil`, and it drew a line a whole cell outside the area.**
+/// `CustomPaint` does not clip its painter, so on the game screen that line
+/// landed above the board canvas and straight across the HUD — a long dash
+/// through the multiplier and the combo pips, which is exactly how it was
+/// reported from a device.
+///
+/// `floor` is the correct direction: it returns the largest in-phase value
+/// that is still at or after the edge, so the first line drawn is the first
+/// one inside the area. `test/render/starfield_test.dart` pins both halves of
+/// that — in phase, and never before the edge.
+double gridStart(double origin, double edge, double spacing) =>
+    origin - ((origin - edge) / spacing).floor() * spacing;
+
 /// The chart grid over the frame and margins.
 ///
 /// **Both axes**, which is the whole reason this theme was worth having: a
@@ -155,8 +170,7 @@ void paintChartGrid(
   // own pitch and the board's rows and columns run on into the sky. A grid at
   // some other pitch reads as hatching laid over the board rather than as the
   // chart the board sits on.
-  double start(double from, double edge) =>
-      from - ((from - edge) / spacing).ceil() * spacing;
+  double start(double from, double edge) => gridStart(from, edge, spacing);
 
   for (
     var x = start(origin?.dx ?? area.left, area.left);

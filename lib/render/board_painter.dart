@@ -243,7 +243,15 @@ class BoardPainter extends CustomPainter {
       _chromePalette = p;
       _chromeGrid = l.gridW * 100 + l.gridH;
     }
+    // Clipped to our own box. A `CustomPaint` does not clip its painter, so
+    // anything the chrome draws outside `size` lands on whatever widget is
+    // next to it — which is how a mis-phased grid line ended up across the
+    // HUD. The grid is correct now; this is the guard that makes the class of
+    // bug impossible rather than fixed once.
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
     canvas.drawPicture(_chrome!);
+    canvas.restore();
   }
 
   /* ---------------- board ---------------- */
